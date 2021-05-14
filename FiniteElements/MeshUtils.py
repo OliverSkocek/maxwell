@@ -1,4 +1,5 @@
 import numpy as np
+from dataclasses import dataclass
 
 
 def get_common_faces(vertex_1, vertex_2, faces):
@@ -16,6 +17,15 @@ def compute_area(face):
 def get_boundary(N):
     return list(range(N + 1)) + list(range(N + 1, (N + 1) ** 2, N + 1)) + list(
         range(2 * N + 1, (N + 1) ** 2, N + 1)) + list(range(N * (N + 1) + 1, (N + 1) ** 2))
+
+
+@dataclass
+class ShapeFunction:
+    """
+    Container for implementing shape-functions.
+    """
+    value: callable
+    gradient: callable
 
 
 class Mesh:
@@ -60,9 +70,9 @@ class Mesh:
         return np.concatenate(
             np.tensordot(M, np.stack(np.meshgrid(line, line)), (1, 0)).T, axis=0)
 
-    def get_base_function(self, base_number):
+    def get_shape_function(self, base_number):
         """
-        Returns a function handle for the base function, its gradient
+        Returns a function handle for the shape function, its gradient
         and its support.
 
         :param base_number: index of the desired base function.
@@ -81,7 +91,7 @@ class Mesh:
                 triangle = (triangle - b)[:-1, :]
                 transformator.append((np.linalg.inv(triangle), b))
 
-        def base_function(x):
+        def shape_function(x):
             result = np.zeros((x.shape[0],))
             for trafo, b in transformator:
                 h = np.matmul(x - b, trafo)
@@ -92,4 +102,16 @@ class Mesh:
                           np.heaviside(fun_val, 1) * fun_val
             return result
 
-        return base_function
+        def gradient(x):
+            result = np.zeros(x.shape)
+            for trafo, b in transformator:
+                h = np.matmul(x - b, trafo)
+                grad = np.sum(trafo, axis=1)
+                fun_val = 1 - np.sum(h, axis=1)
+                result += np.heaviside(h[:, :1], 1) * \
+                          np.heaviside(h[:, 1:], 1) * \
+                          np.heaviside(-result, 1) * \
+                          np.heaviside(fun_val.reshape(-1, 1), 1) * grad
+            return result
+
+        return ShapeFunction(value=shape_function, gradient=gradient)
