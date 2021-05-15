@@ -19,15 +19,6 @@ def get_boundary(N):
         range(2 * N + 1, (N + 1) ** 2, N + 1)) + list(range(N * (N + 1) + 1, (N + 1) ** 2))
 
 
-@dataclass
-class ShapeFunction:
-    """
-    Container for implementing shape-functions.
-    """
-    value: callable
-    gradient: callable
-
-
 class Mesh:
     """
     Class containing data structures and functionality for
@@ -92,26 +83,15 @@ class Mesh:
                 transformator.append((np.linalg.inv(triangle), b))
 
         def shape_function(x):
-            result = np.zeros((x.shape[0],))
+            value = np.zeros((x.shape[0],))
+            gradient = np.zeros(x.shape)
             for trafo, b in transformator:
                 h = np.matmul(x - b, trafo)
-                fun_val = 1 - np.sum(h, axis=1)
-                result += np.heaviside(h[:, 0], 1) * \
-                          np.heaviside(h[:, 1], 1) * \
-                          np.heaviside(-result, 1) * \
-                          np.heaviside(fun_val, 1) * fun_val
-            return result
+                grad = -np.sum(trafo, axis=1)
+                fun_val = (1 - np.sum(h, axis=1))
+                update = (h[:, 0] >= 0) * (h[:, 1] >= 0) * (fun_val >= 0)
+                value[update] = fun_val[update]
+                gradient[update, :] = grad.reshape(1, -1)
+            return value, gradient
 
-        def gradient(x):
-            result = np.zeros(x.shape)
-            for trafo, b in transformator:
-                h = np.matmul(x - b, trafo)
-                grad = np.sum(trafo, axis=1)
-                fun_val = 1 - np.sum(h, axis=1)
-                result += np.heaviside(h[:, :1], 1) * \
-                          np.heaviside(h[:, 1:], 1) * \
-                          np.heaviside(-result, 1) * \
-                          np.heaviside(fun_val.reshape(-1, 1), 1) * grad
-            return result
-
-        return ShapeFunction(value=shape_function, gradient=gradient)
+        return shape_function
