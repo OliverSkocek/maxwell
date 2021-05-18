@@ -2,21 +2,12 @@ import numpy as np
 from dataclasses import dataclass
 
 
-def get_common_faces(vertex_1, vertex_2, faces):
-    return faces[np.max(np.isin(faces, vertex_1), axis=1) * np.max(np.isin(faces, vertex_2), axis=1), :]
-
-
 def compute_face_gradient(face, values):
     return np.linalg.solve(np.concatenate([face, np.ones((3, 1))], axis=1), values)
 
 
 def compute_area(face):
     return np.abs(np.linalg.det(face[1:, :] - face[0, :])) / 2
-
-
-def get_boundary(N):
-    return list(range(N + 1)) + list(range(N + 1, (N + 1) ** 2, N + 1)) + list(
-        range(2 * N + 1, (N + 1) ** 2, N + 1)) + list(range(N * (N + 1) + 1, (N + 1) ** 2))
 
 
 class Mesh:
@@ -31,6 +22,8 @@ class Mesh:
         self.number_of_elements = self._vertices.shape[0]
         self._faces = self._get_faces(number_of_divisions)
         self.number_of_faces = self._faces.shape[0]
+        self.boundary_elements = self._get_boundary(number_of_divisions)
+        self._area = np.sqrt(3) / 4 * np.linalg.norm(self._vertices[1] - self._vertices[0]) ** 2
 
     @staticmethod
     def _get_faces(N):
@@ -95,3 +88,40 @@ class Mesh:
             return value, gradient
 
         return shape_function
+
+    @staticmethod
+    def _get_boundary(number_of_divisions):
+        """
+        Returns the indexes of the boundary elements.
+
+        :param number_of_divisions: number of subdivisions of the
+        parallelogram per axis.
+        :return:
+        """
+        return list(range(number_of_divisions + 1)) + list(
+            range(number_of_divisions + 1, (number_of_divisions + 1) ** 2, number_of_divisions + 1)) + list(
+            range(2 * number_of_divisions + 1, (number_of_divisions + 1) ** 2, number_of_divisions + 1)) + list(
+            range(number_of_divisions * (number_of_divisions + 1) + 1, (number_of_divisions + 1) ** 2))
+
+    def get_common_faces(self, vertex_1, vertex_2):
+        """
+        Returns all faces that contain vertex_1 and vertex_2.
+
+        :param vertex_1:
+        :param vertex_2:
+        :return:
+        """
+        return self._faces[
+               np.max(np.isin(self._faces, vertex_1), axis=1) * np.max(np.isin(self._faces, vertex_2), axis=1), :]
+
+    def get_overlap_element(self, vertex_1, vertex_2):
+        """
+        Computes the overlap integral between the shape function located at vertex_0
+        and vertex_1.
+
+        :param vertex_1:
+        :param vertex_2:
+        :return:
+        """
+        common_faces = self.get_common_faces(vertex_1=vertex_1, vertex_2=vertex_2)
+        return (2 if vertex_1 == vertex_2 else 1) * common_faces.shape[0] * self._area * (1 / 12)
