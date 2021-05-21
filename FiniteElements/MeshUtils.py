@@ -162,7 +162,7 @@ class Mesh:
         :param charge_density: callable for the charge density.
         :return:
         """
-        source = np.arange(self.number_of_elements)
+        source = np.arange(self.number_of_vertices)
         return np.vectorize(
             lambda n: sum(
                 self.get_overlap_integral(n, m) * charge_density(*self._vertices[m, :].tolist()) for m in
