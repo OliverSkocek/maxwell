@@ -50,7 +50,7 @@ class Mesh:
         self.number_of_vertices = self._vertices.shape[0]
         self._elements = self._get_elements(number_of_divisions)
         self.number_of_elements = self._elements.shape[0]
-        self.boundary_elements = self._get_boundary(number_of_divisions)
+        self.boundary_vertices = self._get_boundary(number_of_divisions)
         self._area = np.sqrt(3) / 4 * np.linalg.norm(self._vertices[1] - self._vertices[0]) ** 2
 
     @staticmethod
@@ -108,7 +108,7 @@ class Mesh:
     @staticmethod
     def _get_boundary(number_of_divisions):
         """
-        Returns the indexes of the boundary elements.
+        Returns the indexes of the boundary vertices.
 
         :param number_of_divisions: number of subdivisions of the
         parallelogram per axis.
