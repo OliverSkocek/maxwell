@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import sparse
+from scipy.sparse.linalg import spsolve
 
 
 def compute_face_gradient(face, values):
@@ -50,7 +51,7 @@ class Mesh:
         self.number_of_vertices = self._vertices.shape[0]
         self._elements = self._get_elements(number_of_divisions)
         self.number_of_elements = self._elements.shape[0]
-        self.boundary_vertices = self._get_boundary(number_of_divisions)
+        self.boundary_vertices = self._get_boundary()
         self._area = np.sqrt(3) / 4 * np.linalg.norm(self._vertices[1] - self._vertices[0]) ** 2
 
     @staticmethod
@@ -105,19 +106,17 @@ class Mesh:
 
         return ShapeFunction(transformator=transformator)
 
-    @staticmethod
-    def _get_boundary(number_of_divisions):
+    def _get_boundary(self,):
         """
         Returns the indexes of the boundary vertices.
 
-        :param number_of_divisions: number of subdivisions of the
-        parallelogram per axis.
         :return:
         """
-        return list(range(number_of_divisions + 1)) + list(
+        number_of_divisions = self.number_of_divisions
+        return np.array(list(range(number_of_divisions + 1)) + list(
             range(number_of_divisions + 1, (number_of_divisions + 1) ** 2, number_of_divisions + 1)) + list(
             range(2 * number_of_divisions + 1, (number_of_divisions + 1) ** 2, number_of_divisions + 1)) + list(
-            range(number_of_divisions * (number_of_divisions + 1) + 1, (number_of_divisions + 1) ** 2))
+            range(number_of_divisions * (number_of_divisions + 1) + 1, (number_of_divisions + 1) ** 2)))
 
     def get_common_elements(self, vertex_1, vertex_2):
         """
@@ -162,12 +161,15 @@ class Mesh:
         :param charge_density: callable for the charge density.
         :return:
         """
-        source = np.arange(self.number_of_vertices)
-        return np.vectorize(
+        # TODO build faster version.
+        source = np.vectorize(
             lambda n: sum(
                 self.get_overlap_integral(n, m) * charge_density(*self._vertices[m, :].tolist()) for m in
                 np.unique(self.get_common_elements(n, n)))
-        )(source)
+        )(np.arange(self.number_of_vertices))
+
+        source[self.boundary_vertices] = 0.0
+        return source
 
     def compute_finite_laplace(self, direct=False):
         """
@@ -178,7 +180,11 @@ class Mesh:
         """
         if direct:
             index = np.arange(self.number_of_vertices)
-            return np.vectorize(self.get_gradient_overlap)(*np.meshgrid(index, index))
+            A = np.vectorize(self.get_gradient_overlap)(*np.meshgrid(index, index))
+            eye = np.eye(A.shape[0])
+            A[self.boundary_vertices.reshape(-1, 1), :] = eye[self.boundary_vertices.reshape(-1, 1), :]
+            A[:, self.boundary_vertices.reshape(1, -1)] = eye[:, self.boundary_vertices.reshape(1, -1)]
+            return A
         else:
 
             template = np.ones((self.number_of_divisions + 1,))
@@ -189,32 +195,65 @@ class Mesh:
             end = np.flip(start)
             middle = 6 * template
             middle[[0, -1]] = np.array([3, 3])
-            diagonals.append(np.concatenate(
-                [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [end]))
+            d_0 = np.concatenate(
+                [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [end]) * self._area * 4 / 3
+            d_0[self.boundary_vertices] = 1.0
+            diagonals.append(d_0)
 
             start = -0.5 * template
             start[-1] = 0.0
             end = np.flip(start)[1:]
             middle = -template
             middle[-1] = 0.0
-            diagonals.append(np.concatenate(
-                [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [end]))
-            diagonals.append(diagonals[-1])
+            d_1 = np.concatenate(
+                [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [end]) * self._area * 4 / 3
+            b_exclude = self.boundary_vertices - 1
+            b_exclude = b_exclude[b_exclude >= 0]
+            d_1[b_exclude] = 0.0
+            b_exclude = self.boundary_vertices[self.boundary_vertices < d_1.size]
+            d_1[b_exclude] = 0.0
+            diagonals += [d_1, d_1]
 
             start = -template
             start[0] = 0.0
             end = -np.ones((self.number_of_divisions + 2,))
             end[[0, -1]] = 0.0
-            diagonals.append(
-                np.concatenate([start for _ in range(self.number_of_divisions + 1 - 2)] + [end]))
-            diagonals.append(diagonals[-1])
+            d_2 = np.concatenate([start for _ in range(self.number_of_divisions + 1 - 2)] + [end]) * self._area * 4 / 3
+            b_exclude = self.boundary_vertices - self.number_of_divisions
+            b_exclude = b_exclude[b_exclude >= 0]
+            d_2[b_exclude] = 0.0
+            b_exclude = self.boundary_vertices[self.boundary_vertices < d_2.size]
+            d_2[b_exclude] = 0.0
+            diagonals += [d_2, d_2]
 
             start = -template
             start[[0, -1]] = -0.5
-            diagonals.append(
-                np.concatenate([start for _ in range(self.number_of_divisions + 1 - 1)]))
-            diagonals.append(diagonals[-1])
+            d_3 = np.concatenate([start for _ in range(self.number_of_divisions + 1 - 1)]) * self._area * 4 / 3
+            b_exclude = self.boundary_vertices - self.number_of_divisions - 1
+            b_exclude = b_exclude[b_exclude >= 0]
+            d_3[b_exclude] = 0.0
+            b_exclude = self.boundary_vertices[self.boundary_vertices < d_3.size]
+            d_3[b_exclude] = 0.0
+            diagonals += [d_3, d_3]
 
             return sparse.diags(diagonals, [0, 1, -1, self.number_of_divisions, -self.number_of_divisions,
                                             self.number_of_divisions + 1,
-                                            -(self.number_of_divisions + 1)]) * self._area * 4 / 3
+                                            -(self.number_of_divisions + 1)])
+
+    def solve(self, charge_density, direct=False):
+        """
+        Solves the Poisson problem with zero dirichlet boundary condition given a charge density.
+
+        :param charge_density: callable for the charge density.
+        :param direct: if True, laplacian is directly computed from get_gradient_overlap.
+        :return:
+        """
+        if direct:
+            return np.linalg.solve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density))
+        else:
+            return spsolve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density))
+
+
+
+        # TODO apply geometry
+        # TODO draw solution
