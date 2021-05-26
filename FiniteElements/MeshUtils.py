@@ -256,4 +256,3 @@ class Mesh:
 
 
         # TODO apply geometry
-        # TODO draw solution
