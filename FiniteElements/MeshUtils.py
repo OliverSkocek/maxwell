@@ -52,7 +52,8 @@ class Mesh:
         self._elements = self._get_elements(number_of_divisions)
         self.number_of_elements = self._elements.shape[0]
         self.boundary_vertices = self._get_boundary()
-        self._area = np.sqrt(3) / 4 * np.linalg.norm(self._vertices[1] - self._vertices[0]) ** 2
+        self._base_length = np.linalg.norm(self._vertices[1] - self._vertices[0])
+        self._area = np.sqrt(3) / 4 * self._base_length ** 2
 
     @staticmethod
     def _get_elements(N):
@@ -106,7 +107,7 @@ class Mesh:
 
         return ShapeFunction(transformator=transformator)
 
-    def _get_boundary(self,):
+    def _get_boundary(self, ):
         """
         Returns the indexes of the boundary vertices.
 
@@ -152,7 +153,7 @@ class Mesh:
         """
         common_elements = self.get_common_elements(vertex_1=vertex_1, vertex_2=vertex_2)
         phi = 0 if vertex_1 == vertex_2 else 2 / 3 * np.pi
-        return np.cos(phi) * common_elements.shape[0] * self._area * 4 / 3
+        return np.cos(phi) * common_elements.shape[0] * self._area / self._base_length * 4 / 3
 
     def compute_source_vector(self, charge_density):
         """
@@ -196,7 +197,8 @@ class Mesh:
             middle = 6 * template
             middle[[0, -1]] = np.array([3, 3])
             d_0 = np.concatenate(
-                [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [end]) * self._area * 4 / 3
+                [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [
+                    end]) * self._area / self._base_length * 4 / 3
             d_0[self.boundary_vertices] = 1.0
             diagonals.append(d_0)
 
@@ -206,7 +208,8 @@ class Mesh:
             middle = -template
             middle[-1] = 0.0
             d_1 = np.concatenate(
-                [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [end]) * self._area * 4 / 3
+                [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [
+                    end]) * self._area / self._base_length * 4 / 3
             b_exclude = self.boundary_vertices - 1
             b_exclude = b_exclude[b_exclude >= 0]
             d_1[b_exclude] = 0.0
@@ -218,7 +221,8 @@ class Mesh:
             start[0] = 0.0
             end = -np.ones((self.number_of_divisions + 2,))
             end[[0, -1]] = 0.0
-            d_2 = np.concatenate([start for _ in range(self.number_of_divisions + 1 - 2)] + [end]) * self._area * 4 / 3
+            d_2 = np.concatenate([start for _ in range(self.number_of_divisions + 1 - 2)] + [
+                end]) * self._area / self._base_length * 4 / 3
             b_exclude = self.boundary_vertices - self.number_of_divisions
             b_exclude = b_exclude[b_exclude >= 0]
             d_2[b_exclude] = 0.0
@@ -228,7 +232,8 @@ class Mesh:
 
             start = -template
             start[[0, -1]] = -0.5
-            d_3 = np.concatenate([start for _ in range(self.number_of_divisions + 1 - 1)]) * self._area * 4 / 3
+            d_3 = np.concatenate(
+                [start for _ in range(self.number_of_divisions + 1 - 1)]) * self._area / self._base_length * 4 / 3
             b_exclude = self.boundary_vertices - self.number_of_divisions - 1
             b_exclude = b_exclude[b_exclude >= 0]
             d_3[b_exclude] = 0.0
@@ -252,7 +257,5 @@ class Mesh:
             return np.linalg.solve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density))
         else:
             return spsolve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density))
-
-
 
         # TODO apply geometry
