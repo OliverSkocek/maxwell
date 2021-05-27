@@ -153,7 +153,7 @@ class Mesh:
         """
         common_elements = self.get_common_elements(vertex_1=vertex_1, vertex_2=vertex_2)
         phi = 0 if vertex_1 == vertex_2 else 2 / 3 * np.pi
-        return np.cos(phi) * common_elements.shape[0] * self._area / self._base_length * 4 / 3
+        return np.cos(phi) * common_elements.shape[0] * np.sqrt(3) / 3
 
     def compute_source_vector(self, charge_density):
         """
@@ -198,7 +198,7 @@ class Mesh:
             middle[[0, -1]] = np.array([3, 3])
             d_0 = np.concatenate(
                 [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [
-                    end]) * self._area / self._base_length * 4 / 3
+                    end]) * np.sqrt(3) / 3
             d_0[self.boundary_vertices] = 1.0
             diagonals.append(d_0)
 
@@ -209,7 +209,7 @@ class Mesh:
             middle[-1] = 0.0
             d_1 = np.concatenate(
                 [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [
-                    end]) * self._area / self._base_length * 4 / 3
+                    end]) * np.sqrt(3) / 3
             b_exclude = self.boundary_vertices - 1
             b_exclude = b_exclude[b_exclude >= 0]
             d_1[b_exclude] = 0.0
@@ -222,7 +222,7 @@ class Mesh:
             end = -np.ones((self.number_of_divisions + 2,))
             end[[0, -1]] = 0.0
             d_2 = np.concatenate([start for _ in range(self.number_of_divisions + 1 - 2)] + [
-                end]) * self._area / self._base_length * 4 / 3
+                end]) * np.sqrt(3) / 3
             b_exclude = self.boundary_vertices - self.number_of_divisions
             b_exclude = b_exclude[b_exclude >= 0]
             d_2[b_exclude] = 0.0
@@ -233,7 +233,7 @@ class Mesh:
             start = -template
             start[[0, -1]] = -0.5
             d_3 = np.concatenate(
-                [start for _ in range(self.number_of_divisions + 1 - 1)]) * self._area / self._base_length * 4 / 3
+                [start for _ in range(self.number_of_divisions + 1 - 1)]) * np.sqrt(3) / 3
             b_exclude = self.boundary_vertices - self.number_of_divisions - 1
             b_exclude = b_exclude[b_exclude >= 0]
             d_3[b_exclude] = 0.0
