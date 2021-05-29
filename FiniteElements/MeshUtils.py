@@ -163,10 +163,6 @@ class Mesh:
         :param charge_density: callable for the charge density.
         :return:
         """
-
-        def pad(x):
-            return np.concatenate([x, -np.ones((7 - x.shape[0],), dtype=np.int)])
-
         if direct:
             source = np.vectorize(
                 lambda n: sum(
@@ -176,16 +172,30 @@ class Mesh:
 
             source[self.boundary_vertices] = 0.0
         else:
-            v = np.concatenate(
-                [np.array(pad(np.unique(self.get_common_elements(n, n)))).reshape(1, -1) for n in
-                 range(self.number_of_vertices)], axis=0) # TODO find faster way to compute v
+            start = np.array(
+                [0, 1, self.number_of_divisions + 1, self.number_of_divisions + 2, 2 * (self.number_of_divisions + 1),
+                 np.nan, np.nan])
+            middle = np.array(
+                [0, 1, self.number_of_divisions, self.number_of_divisions + 1, self.number_of_divisions + 2,
+                 2 * self.number_of_divisions + 1, 2 * (self.number_of_divisions + 1)]).reshape(1, -1)
+            end = np.array([0, self.number_of_divisions, self.number_of_divisions + 1, 2 * self.number_of_divisions + 1,
+                            2 * (self.number_of_divisions + 1), np.nan, np.nan])
+            res = np.concatenate([start.reshape(1, -1), np.repeat(middle, repeats=self.number_of_divisions - 1, axis=0),
+                                  end.reshape(1, -1)],
+                                 axis=0)
+            v = np.arange(-self.number_of_divisions - 1,
+                          self.number_of_vertices - self.number_of_divisions - 1).reshape(-1, 1) + np.concatenate(
+                [res for _ in range(self.number_of_divisions + 1)], axis=0)
+            v[np.logical_or(v < 0, v >= self.number_of_vertices)] = -1
+            v[np.isnan(v)] = -1
+
             c_0 = np.repeat(np.array([[2, 2, 2, 12, 2, 2, 2]]), repeats=self.number_of_divisions - 1, axis=0)
-            c_1 = np.repeat(np.array([[1, 6, 1, 2, 2, 0, 0]]), repeats=self.number_of_divisions - 1, axis=0)
+            c_1 = np.repeat(np.array([[0, 0, 1, 6, 1, 2, 2]]), repeats=self.number_of_divisions - 1, axis=0)
             c_2 = np.repeat(np.array([[2, 2, 1, 6, 1, 0, 0]]), repeats=self.number_of_divisions - 1, axis=0)
-            a_1 = np.array([[2, 1, 1, 0, 0, 0, 0]])
+            a_1 = np.array([[0, 0, 2, 1, 1, 0, 0]])
             b_1 = np.array([[1, 1, 2, 0, 0, 0, 0]])
             a_2 = np.array([[1, 2, 6, 2, 1, 0, 0]])
-            a_3 = np.array([[1, 4, 2, 1, 0, 0, 0]])
+            a_3 = np.array([[0, 1, 4, 2, 1, 0, 0]])
             b_3 = np.array([[1, 2, 4, 1, 0, 0, 0]])
 
             start = np.concatenate([a_1, c_1, a_3], axis=0)
@@ -196,7 +206,7 @@ class Mesh:
                 [np.vectorize(lambda n: charge_density(*self._vertices[n, :].tolist()))(
                     np.arange(self.number_of_vertices)),
                     np.zeros((1,))])
-            source = np.sum(u[v] * h, axis=1) * self._area * (1 / 12)
+            source = np.sum(u[v.astype(int)] * h, axis=1) * self._area * (1 / 12)
             source[self.boundary_vertices] = 0.0
         return source
 
@@ -287,4 +297,6 @@ class Mesh:
             return spsolve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density))
 
         # TODO apply geometry
+        #   geometry = center & radius & indicator function
+        #   passive vertices, inner vertices, boundary vertices
         # TODO ignore boundary effects that result from treating boundary functions of the parallelogram as cut off.
