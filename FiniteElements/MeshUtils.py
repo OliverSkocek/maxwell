@@ -155,21 +155,49 @@ class Mesh:
         phi = 0 if vertex_1 == vertex_2 else 2 / 3 * np.pi
         return np.cos(phi) * common_elements.shape[0] * np.sqrt(3) / 3
 
-    def compute_source_vector(self, charge_density):
+    def compute_source_vector(self, charge_density, direct=False):
         """
         Computes the inhomogeneity for the Poisson Problem.
 
+        :param direct: if True, laplacian is directly computed from get_gradient_overlap.
         :param charge_density: callable for the charge density.
         :return:
         """
-        # TODO build faster version.
-        source = np.vectorize(
-            lambda n: sum(
-                self.get_overlap_integral(n, m) * charge_density(*self._vertices[m, :].tolist()) for m in
-                np.unique(self.get_common_elements(n, n)))
-        )(np.arange(self.number_of_vertices))
 
-        source[self.boundary_vertices] = 0.0
+        def pad(x):
+            return np.concatenate([x, -np.ones((7 - x.shape[0],), dtype=np.int)])
+
+        if direct:
+            source = np.vectorize(
+                lambda n: sum(
+                    self.get_overlap_integral(n, m) * charge_density(*self._vertices[m, :].tolist()) for m in
+                    np.unique(self.get_common_elements(n, n)))
+            )(np.arange(self.number_of_vertices))
+
+            source[self.boundary_vertices] = 0.0
+        else:
+            v = np.concatenate(
+                [np.array(pad(np.unique(self.get_common_elements(n, n)))).reshape(1, -1) for n in
+                 range(self.number_of_vertices)], axis=0) # TODO find faster way to compute v
+            c_0 = np.repeat(np.array([[2, 2, 2, 12, 2, 2, 2]]), repeats=self.number_of_divisions - 1, axis=0)
+            c_1 = np.repeat(np.array([[1, 6, 1, 2, 2, 0, 0]]), repeats=self.number_of_divisions - 1, axis=0)
+            c_2 = np.repeat(np.array([[2, 2, 1, 6, 1, 0, 0]]), repeats=self.number_of_divisions - 1, axis=0)
+            a_1 = np.array([[2, 1, 1, 0, 0, 0, 0]])
+            b_1 = np.array([[1, 1, 2, 0, 0, 0, 0]])
+            a_2 = np.array([[1, 2, 6, 2, 1, 0, 0]])
+            a_3 = np.array([[1, 4, 2, 1, 0, 0, 0]])
+            b_3 = np.array([[1, 2, 4, 1, 0, 0, 0]])
+
+            start = np.concatenate([a_1, c_1, a_3], axis=0)
+            middle = np.concatenate([a_2, c_0, a_2], axis=0)
+            end = np.concatenate([b_3, c_2, b_1], axis=0)
+            h = np.concatenate([start] + [middle for _ in range(self.number_of_divisions - 1)] + [end], axis=0)
+            u = np.concatenate(
+                [np.vectorize(lambda n: charge_density(*self._vertices[n, :].tolist()))(
+                    np.arange(self.number_of_vertices)),
+                    np.zeros((1,))])
+            source = np.sum(u[v] * h, axis=1) * self._area * (1 / 12)
+            source[self.boundary_vertices] = 0.0
         return source
 
     def compute_finite_laplace(self, direct=False):
@@ -259,3 +287,4 @@ class Mesh:
             return spsolve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density))
 
         # TODO apply geometry
+        # TODO ignore boundary effects that result from treating boundary functions of the parallelogram as cut off.
