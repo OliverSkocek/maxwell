@@ -51,13 +51,12 @@ class Mesh:
         self.number_of_vertices = self._vertices.shape[0]
         self._elements = self._get_elements(number_of_divisions)
         self.number_of_elements = self._elements.shape[0]
-
-        self._base_length = np.linalg.norm(self._vertices[1] - self._vertices[0])
-        self._area = np.sqrt(3) / 4 * self._base_length ** 2
         self.active = None
         self.passive = None
         self.boundary_vertices = None
         self.apply_geometry()
+        self._base_length = np.linalg.norm(self._vertices[1] - self._vertices[0])
+        self._area = np.sqrt(3) / 4 * self._base_length ** 2
 
     def apply_geometry(self, ):
         if self.geometry is not None:
