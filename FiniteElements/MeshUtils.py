@@ -222,26 +222,18 @@ class Mesh:
 
             source[ignored_vertices] = 0.0
         else:
-            v = self.get_nearest_vertices_matrix()
+            nvm = self.get_nearest_vertices_matrix()
 
-            c_0 = np.repeat(np.array([[2, 2, 2, 12, 2, 2, 2]]), repeats=self.number_of_divisions - 1, axis=0)
-            c_1 = np.repeat(np.array([[0, 0, 1, 6, 1, 2, 2]]), repeats=self.number_of_divisions - 1, axis=0)
-            c_2 = np.repeat(np.array([[2, 2, 1, 6, 1, 0, 0]]), repeats=self.number_of_divisions - 1, axis=0)
-            a_1 = np.array([[0, 0, 2, 1, 1, 0, 0]])
-            b_1 = np.array([[1, 1, 2, 0, 0, 0, 0]])
-            a_2 = np.array([[1, 2, 6, 2, 1, 0, 0]])
-            a_3 = np.array([[0, 1, 4, 2, 1, 0, 0]])
-            b_3 = np.array([[1, 2, 4, 1, 0, 0, 0]])
+            c = np.repeat(np.array([[2, 2, 2, 12, 2, 2, 2]]), repeats=self.number_of_divisions - 1, axis=0)
+            e = np.array([[1, 2, 6, 2, 1, 0, 0]])
 
-            start = np.concatenate([a_1, c_1, a_3], axis=0)
-            middle = np.concatenate([a_2, c_0, a_2], axis=0)
-            end = np.concatenate([b_3, c_2, b_1], axis=0)
-            h = np.concatenate([start] + [middle for _ in range(self.number_of_divisions - 1)] + [end], axis=0)
-            u = np.concatenate(
+            middle = np.concatenate([e, c, e], axis=0)
+            h = np.concatenate([middle for _ in range(self.number_of_divisions + 1)], axis=0)
+            values = np.concatenate(
                 [np.vectorize(lambda n: charge_density(*self._vertices[n, :].tolist()))(
                     np.arange(self.number_of_vertices)),
                     np.zeros((1,))])
-            source = np.sum(u[v] * h, axis=1) * self._area * (1 / 12)
+            source = np.sum(values[nvm] * h, axis=1) * self._area * (1 / 12)
             source[ignored_vertices] = 0.0
         return source
 
@@ -261,28 +253,15 @@ class Mesh:
             A[:, ignored_vertices.reshape(1, -1)] = eye[:, ignored_vertices.reshape(1, -1)]
             return A
         else:
-            template = np.ones((self.number_of_divisions + 1,))
-
+            d_0 = 6 * np.ones((self.number_of_vertices,)) * np.sqrt(3) / 3
+            d_1 = -np.ones((self.number_of_vertices - 1,)) * np.sqrt(3) / 3
+            d_2 = -np.ones((self.number_of_vertices - self.number_of_divisions,)) * np.sqrt(3) / 3
+            d_3 = -np.ones((self.number_of_vertices - self.number_of_divisions - 1,)) * np.sqrt(3) / 3
+            
             diagonals = list()
-            start = 3 * template
-            start[[0, -1]] = np.array([1, 2])
-            end = np.flip(start)
-            middle = 6 * template
-            middle[[0, -1]] = np.array([3, 3])
-            d_0 = np.concatenate(
-                [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [
-                    end]) * np.sqrt(3) / 3
             d_0[ignored_vertices] = 1.0
             diagonals.append(d_0)
 
-            start = -0.5 * template
-            start[-1] = 0.0
-            end = np.flip(start)[1:]
-            middle = -template
-            middle[-1] = 0.0
-            d_1 = np.concatenate(
-                [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [
-                    end]) * np.sqrt(3) / 3
             b_exclude = ignored_vertices - 1
             b_exclude = b_exclude[b_exclude >= 0]
             d_1[b_exclude] = 0.0
@@ -290,12 +269,6 @@ class Mesh:
             d_1[b_exclude] = 0.0
             diagonals += [d_1, d_1]
 
-            start = -template
-            start[0] = 0.0
-            end = -np.ones((self.number_of_divisions + 2,))
-            end[[0, -1]] = 0.0
-            d_2 = np.concatenate([start for _ in range(self.number_of_divisions + 1 - 2)] + [
-                end]) * np.sqrt(3) / 3
             b_exclude = ignored_vertices - self.number_of_divisions
             b_exclude = b_exclude[b_exclude >= 0]
             d_2[b_exclude] = 0.0
@@ -303,10 +276,6 @@ class Mesh:
             d_2[b_exclude] = 0.0
             diagonals += [d_2, d_2]
 
-            start = -template
-            start[[0, -1]] = -0.5
-            d_3 = np.concatenate(
-                [start for _ in range(self.number_of_divisions + 1 - 1)]) * np.sqrt(3) / 3
             b_exclude = ignored_vertices - self.number_of_divisions - 1
             b_exclude = b_exclude[b_exclude >= 0]
             d_3[b_exclude] = 0.0
@@ -332,4 +301,4 @@ class Mesh:
         else:
             return spsolve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density))
 
-        # TODO ignore boundary effects that result from treating boundary functions of the parallelogram as cut off.
+        # TODO boundary condtion non zero.
