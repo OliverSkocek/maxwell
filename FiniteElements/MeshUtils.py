@@ -51,9 +51,30 @@ class Mesh:
         self.number_of_vertices = self._vertices.shape[0]
         self._elements = self._get_elements(number_of_divisions)
         self.number_of_elements = self._elements.shape[0]
-        self.boundary_vertices = self._get_boundary()
+
         self._base_length = np.linalg.norm(self._vertices[1] - self._vertices[0])
         self._area = np.sqrt(3) / 4 * self._base_length ** 2
+        self.active = None
+        self.passive = None
+        self.boundary_vertices = None
+        self.apply_geometry()
+
+    def apply_geometry(self, ):
+        if self.geometry is not None:
+            self._vertices = self.geometry['radius'] * \
+                             (self._vertices - np.array([3 / 4, np.sqrt(3) / 4])) / (np.sqrt(3) / 4) \
+                             + self.geometry['center']
+            indication = self.geometry['indicator'](self._vertices)
+            indicator_values = np.concatenate([indication, np.zeros((1,))])
+            ind_nn = indicator_values[self.get_nearest_vertices_matrix().astype(int)]
+
+            self.active = np.where(indication)[0]
+            self.passive = np.where(~indication)[0]
+            boundary = np.max(ind_nn, axis=1) - np.min(ind_nn, axis=1)
+            boundary[self.passive] = 0
+            self.boundary_vertices = np.where(boundary)[0]
+        else:
+            self.boundary_vertices = self._get_parallelogram_boundary()
 
     @staticmethod
     def _get_elements(N):
@@ -107,9 +128,9 @@ class Mesh:
 
         return ShapeFunction(transformator=transformator)
 
-    def _get_boundary(self, ):
+    def _get_parallelogram_boundary(self, ):
         """
-        Returns the indexes of the boundary vertices.
+        Returns the indexes of the parallelogram's boundary vertices.
 
         :return:
         """
@@ -155,6 +176,31 @@ class Mesh:
         phi = 0 if vertex_1 == vertex_2 else 2 / 3 * np.pi
         return np.cos(phi) * common_elements.shape[0] * np.sqrt(3) / 3
 
+    def get_nearest_vertices_matrix(self):
+        """
+        Returns a matrix of shape number_of_vetices x 7, containing the indices of each vertex with a distance in the
+        mesh of less or equal one edge.
+
+        :return:
+        """
+        start = np.array(
+            [0, 1, self.number_of_divisions + 1, self.number_of_divisions + 2, 2 * (self.number_of_divisions + 1),
+             np.nan, np.nan])
+        middle = np.array(
+            [0, 1, self.number_of_divisions, self.number_of_divisions + 1, self.number_of_divisions + 2,
+             2 * self.number_of_divisions + 1, 2 * (self.number_of_divisions + 1)]).reshape(1, -1)
+        end = np.array([0, self.number_of_divisions, self.number_of_divisions + 1, 2 * self.number_of_divisions + 1,
+                        2 * (self.number_of_divisions + 1), np.nan, np.nan])
+        res = np.concatenate([start.reshape(1, -1), np.repeat(middle, repeats=self.number_of_divisions - 1, axis=0),
+                              end.reshape(1, -1)],
+                             axis=0)
+        res = np.arange(-self.number_of_divisions - 1,
+                        self.number_of_vertices - self.number_of_divisions - 1).reshape(-1, 1) + np.concatenate(
+            [res for _ in range(self.number_of_divisions + 1)], axis=0)
+        res[np.logical_or(res < 0, res >= self.number_of_vertices)] = -1
+        res[np.isnan(res)] = -1
+        return res.astype(int)
+
     def compute_source_vector(self, charge_density, direct=False):
         """
         Computes the inhomogeneity for the Poisson Problem.
@@ -163,6 +209,7 @@ class Mesh:
         :param charge_density: callable for the charge density.
         :return:
         """
+        ignored_vertices = np.concatenate([self.boundary_vertices, self.passive])
         if direct:
             source = np.vectorize(
                 lambda n: sum(
@@ -170,24 +217,9 @@ class Mesh:
                     np.unique(self.get_common_elements(n, n)))
             )(np.arange(self.number_of_vertices))
 
-            source[self.boundary_vertices] = 0.0
+            source[ignored_vertices] = 0.0
         else:
-            start = np.array(
-                [0, 1, self.number_of_divisions + 1, self.number_of_divisions + 2, 2 * (self.number_of_divisions + 1),
-                 np.nan, np.nan])
-            middle = np.array(
-                [0, 1, self.number_of_divisions, self.number_of_divisions + 1, self.number_of_divisions + 2,
-                 2 * self.number_of_divisions + 1, 2 * (self.number_of_divisions + 1)]).reshape(1, -1)
-            end = np.array([0, self.number_of_divisions, self.number_of_divisions + 1, 2 * self.number_of_divisions + 1,
-                            2 * (self.number_of_divisions + 1), np.nan, np.nan])
-            res = np.concatenate([start.reshape(1, -1), np.repeat(middle, repeats=self.number_of_divisions - 1, axis=0),
-                                  end.reshape(1, -1)],
-                                 axis=0)
-            v = np.arange(-self.number_of_divisions - 1,
-                          self.number_of_vertices - self.number_of_divisions - 1).reshape(-1, 1) + np.concatenate(
-                [res for _ in range(self.number_of_divisions + 1)], axis=0)
-            v[np.logical_or(v < 0, v >= self.number_of_vertices)] = -1
-            v[np.isnan(v)] = -1
+            v = self.get_nearest_vertices_matrix()
 
             c_0 = np.repeat(np.array([[2, 2, 2, 12, 2, 2, 2]]), repeats=self.number_of_divisions - 1, axis=0)
             c_1 = np.repeat(np.array([[0, 0, 1, 6, 1, 2, 2]]), repeats=self.number_of_divisions - 1, axis=0)
@@ -206,8 +238,8 @@ class Mesh:
                 [np.vectorize(lambda n: charge_density(*self._vertices[n, :].tolist()))(
                     np.arange(self.number_of_vertices)),
                     np.zeros((1,))])
-            source = np.sum(u[v.astype(int)] * h, axis=1) * self._area * (1 / 12)
-            source[self.boundary_vertices] = 0.0
+            source = np.sum(u[v] * h, axis=1) * self._area * (1 / 12)
+            source[ignored_vertices] = 0.0
         return source
 
     def compute_finite_laplace(self, direct=False):
@@ -217,15 +249,15 @@ class Mesh:
         :param direct: if True, laplacian is directly computed from get_gradient_overlap.
         :return:
         """
+        ignored_vertices = np.concatenate([self.boundary_vertices, self.passive])
         if direct:
             index = np.arange(self.number_of_vertices)
             A = np.vectorize(self.get_gradient_overlap)(*np.meshgrid(index, index))
             eye = np.eye(A.shape[0])
-            A[self.boundary_vertices.reshape(-1, 1), :] = eye[self.boundary_vertices.reshape(-1, 1), :]
-            A[:, self.boundary_vertices.reshape(1, -1)] = eye[:, self.boundary_vertices.reshape(1, -1)]
+            A[ignored_vertices.reshape(-1, 1), :] = eye[ignored_vertices.reshape(-1, 1), :]
+            A[:, ignored_vertices.reshape(1, -1)] = eye[:, ignored_vertices.reshape(1, -1)]
             return A
         else:
-
             template = np.ones((self.number_of_divisions + 1,))
 
             diagonals = list()
@@ -237,7 +269,7 @@ class Mesh:
             d_0 = np.concatenate(
                 [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [
                     end]) * np.sqrt(3) / 3
-            d_0[self.boundary_vertices] = 1.0
+            d_0[ignored_vertices] = 1.0
             diagonals.append(d_0)
 
             start = -0.5 * template
@@ -248,10 +280,10 @@ class Mesh:
             d_1 = np.concatenate(
                 [start] + [middle for _ in range(self.number_of_divisions + 1 - 2)] + [
                     end]) * np.sqrt(3) / 3
-            b_exclude = self.boundary_vertices - 1
+            b_exclude = ignored_vertices - 1
             b_exclude = b_exclude[b_exclude >= 0]
             d_1[b_exclude] = 0.0
-            b_exclude = self.boundary_vertices[self.boundary_vertices < d_1.size]
+            b_exclude = ignored_vertices[ignored_vertices < d_1.size]
             d_1[b_exclude] = 0.0
             diagonals += [d_1, d_1]
 
@@ -261,10 +293,10 @@ class Mesh:
             end[[0, -1]] = 0.0
             d_2 = np.concatenate([start for _ in range(self.number_of_divisions + 1 - 2)] + [
                 end]) * np.sqrt(3) / 3
-            b_exclude = self.boundary_vertices - self.number_of_divisions
+            b_exclude = ignored_vertices - self.number_of_divisions
             b_exclude = b_exclude[b_exclude >= 0]
             d_2[b_exclude] = 0.0
-            b_exclude = self.boundary_vertices[self.boundary_vertices < d_2.size]
+            b_exclude = ignored_vertices[ignored_vertices < d_2.size]
             d_2[b_exclude] = 0.0
             diagonals += [d_2, d_2]
 
@@ -272,10 +304,10 @@ class Mesh:
             start[[0, -1]] = -0.5
             d_3 = np.concatenate(
                 [start for _ in range(self.number_of_divisions + 1 - 1)]) * np.sqrt(3) / 3
-            b_exclude = self.boundary_vertices - self.number_of_divisions - 1
+            b_exclude = ignored_vertices - self.number_of_divisions - 1
             b_exclude = b_exclude[b_exclude >= 0]
             d_3[b_exclude] = 0.0
-            b_exclude = self.boundary_vertices[self.boundary_vertices < d_3.size]
+            b_exclude = ignored_vertices[ignored_vertices < d_3.size]
             d_3[b_exclude] = 0.0
             diagonals += [d_3, d_3]
 
@@ -296,7 +328,4 @@ class Mesh:
         else:
             return spsolve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density))
 
-        # TODO apply geometry
-        #   geometry = center & radius & indicator function
-        #   passive vertices, inner vertices, boundary vertices
         # TODO ignore boundary effects that result from treating boundary functions of the parallelogram as cut off.
