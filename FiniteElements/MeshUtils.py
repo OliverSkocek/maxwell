@@ -44,12 +44,17 @@ class Mesh:
     building a mesh for finite element computation in two dimensions.
     """
 
-    def __init__(self, number_of_divisions, geometry=None):
+    def __init__(self, mesh_size, geometry=None):
         self.geometry = geometry
-        self.number_of_divisions = number_of_divisions
-        self._vertices = self._generate_vertices(number_of_divisions)
+        self.mesh_size = mesh_size
+        if geometry is None:
+            self.number_of_divisions = int(1 / self.mesh_size) + 1
+        else:
+            self.number_of_divisions = int(self.geometry['radius'] / (np.sqrt(3) / 4) / self.mesh_size) + 1
+        print(self.number_of_divisions)
+        self._vertices = self._generate_vertices(self.number_of_divisions)
         self.number_of_vertices = self._vertices.shape[0]
-        self._elements = self._get_elements(number_of_divisions)
+        self._elements = self._get_elements(self.number_of_divisions)
         self.number_of_elements = self._elements.shape[0]
         self.active = None
         self.passive = None
@@ -314,11 +319,12 @@ class Mesh:
                                             self.number_of_divisions + 1,
                                             -(self.number_of_divisions + 1)])
 
-    def solve(self, charge_density, direct=False):
+    def solve(self, charge_density, boundary_condition=None, direct=False):
         """
         Solves the Poisson problem with zero dirichlet boundary condition given a charge density.
 
         :param charge_density: callable for the charge density.
+        :param boundary_condition: callable for the boundary_condition.
         :param direct: if True, laplacian is directly computed from get_gradient_overlap.
         :return:
         """
