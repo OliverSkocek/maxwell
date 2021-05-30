@@ -51,7 +51,6 @@ class Mesh:
             self.number_of_divisions = int(1 / self.mesh_size) + 1
         else:
             self.number_of_divisions = int(self.geometry['radius'] / (np.sqrt(3) / 4) / self.mesh_size) + 1
-        print(self.number_of_divisions)
         self._vertices = self._generate_vertices(self.number_of_divisions)
         self.number_of_vertices = self._vertices.shape[0]
         self._elements = self._get_elements(self.number_of_divisions)
