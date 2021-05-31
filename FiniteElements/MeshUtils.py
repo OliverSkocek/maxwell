@@ -312,3 +312,4 @@ class Mesh:
         else:
             return spsolve(A=self.compute_finite_laplace(direct),
                            b=self.compute_source_vector(charge_density, boundary_condition=boundary_condition))
+        # TODO unify the way callables are treated f(x,y) vs nump fun.
