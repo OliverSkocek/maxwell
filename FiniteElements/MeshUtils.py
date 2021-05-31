@@ -204,23 +204,21 @@ class Mesh:
         res[np.isnan(res)] = -1
         return res.astype(int)
 
-    def compute_source_vector(self, charge_density, direct=False):
+    def compute_source_vector(self, charge_density, boundary_condition=None, direct=False):
         """
         Computes the inhomogeneity for the Poisson Problem.
 
-        :param direct: if True, laplacian is directly computed from get_gradient_overlap.
         :param charge_density: callable for the charge density.
+        :param boundary_condition: callable for the boundary_condition.
+        :param direct: if True, laplacian is directly computed from get_gradient_overlap.
         :return:
         """
-        ignored_vertices = np.concatenate([self.boundary_vertices, self.passive])
         if direct:
             source = np.vectorize(
                 lambda n: sum(
                     self.get_overlap_integral(n, m) * charge_density(*self._vertices[m, :].tolist()) for m in
                     np.unique(self.get_common_elements(n, n)))
             )(np.arange(self.number_of_vertices))
-
-            source[ignored_vertices] = 0.0
         else:
             nvm = self.get_nearest_vertices_matrix()
 
@@ -234,7 +232,19 @@ class Mesh:
                     np.arange(self.number_of_vertices)),
                     np.zeros((1,))])
             source = np.sum(values[nvm] * h, axis=1) * self._area * (1 / 12)
-            source[ignored_vertices] = 0.0
+        if boundary_condition:
+            boundary_lambda = np.vectorize(lambda n: boundary_condition(*self._vertices[n, :].tolist()))
+            kernel = np.concatenate([-np.ones((2,)), np.zeros((self.number_of_divisions - 2)), np.array([-1, 6, -1]),
+                                     np.zeros((self.number_of_divisions - 2)), -np.ones((2,))]) * np.sqrt(3) / 3
+            residual = 0 * source
+            residual[self.boundary_vertices] = boundary_lambda(self.boundary_vertices)
+            residual = np.convolve(residual, kernel, 'same')
+            source[self.boundary_vertices] = boundary_lambda(self.boundary_vertices)
+            residual[self.boundary_vertices] = 0
+            source -= residual
+        else:
+            source[self.boundary_vertices] = 0
+        source[self.passive] = np.nan
         return source
 
     def compute_finite_laplace(self, direct=False):
@@ -257,7 +267,7 @@ class Mesh:
             d_1 = -np.ones((self.number_of_vertices - 1,)) * np.sqrt(3) / 3
             d_2 = -np.ones((self.number_of_vertices - self.number_of_divisions,)) * np.sqrt(3) / 3
             d_3 = -np.ones((self.number_of_vertices - self.number_of_divisions - 1,)) * np.sqrt(3) / 3
-            
+
             diagonals = list()
             d_0[ignored_vertices] = 1.0
             diagonals.append(d_0)
@@ -297,8 +307,8 @@ class Mesh:
         :return:
         """
         if direct:
-            return np.linalg.solve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density))
+            return np.linalg.solve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density),
+                                   boundary_condition=boundary_condition, direct=True)
         else:
-            return spsolve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density))
-
-        # TODO boundary condtion non zero.
+            return spsolve(A=self.compute_finite_laplace(direct),
+                           b=self.compute_source_vector(charge_density, boundary_condition=boundary_condition))
