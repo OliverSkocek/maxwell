@@ -299,7 +299,7 @@ class Mesh:
 
     def solve(self, charge_density, boundary_condition=None, direct=False):
         """
-        Solves the Poisson problem with zero dirichlet boundary condition given a charge density.
+        Solves the Poisson problem with dirichlet boundary condition given a charge density.
 
         :param charge_density: callable for the charge density.
         :param boundary_condition: callable for the boundary_condition.
