@@ -58,11 +58,16 @@ class Mesh:
         self.active = None
         self.passive = None
         self.boundary_vertices = None
-        self.apply_geometry()
+        self._apply_geometry()
         self._base_length = np.linalg.norm(self._vertices[1] - self._vertices[0])
         self._area = np.sqrt(3) / 4 * self._base_length ** 2
 
-    def apply_geometry(self, ):
+    def _apply_geometry(self, ):
+        """
+        Applies the geometry structure to the MeshUtils intance.
+
+        :return:
+        """
         if self.geometry is not None:
             self._vertices = self.geometry['radius'] * \
                              (self._vertices - np.array([3 / 4, np.sqrt(3) / 4])) / (np.sqrt(3) / 4) \
@@ -80,16 +85,23 @@ class Mesh:
             self.boundary_vertices = self._get_parallelogram_boundary()
 
     @staticmethod
-    def _get_elements(N):
-        up = np.array([[j + i * (N + 1),
-                        j + i * (N + 1) + 1,
-                        j + i * (N + 1) + N + 1]
-                       for i in range(N) for j in range(N)])
+    def _get_elements(number_of_divisions):
+        """
+        Returns the elements (triangles) for a given number of divisions.
+
+        :param number_of_divisions: number of subdivisions of the
+        parallelogram per axis.
+        :return:
+        """
+        up = np.array([[j + i * (number_of_divisions + 1),
+                        j + i * (number_of_divisions + 1) + 1,
+                        j + i * (number_of_divisions + 1) + number_of_divisions + 1]
+                       for i in range(number_of_divisions) for j in range(number_of_divisions)])
         down = np.array(
-            [[i + 1 + j * (N + 1),
-              i + (N + 1) + j * (N + 1),
-              i + (N + 2) + j * (N + 1)]
-             for j in range(N) for i in range(N)])
+            [[i + 1 + j * (number_of_divisions + 1),
+              i + (number_of_divisions + 1) + j * (number_of_divisions + 1),
+              i + (number_of_divisions + 2) + j * (number_of_divisions + 1)]
+             for j in range(number_of_divisions) for i in range(number_of_divisions)])
         return np.concatenate(
             [np.stack([u, d]) for u, d in zip(up, down)], axis=0)
 
