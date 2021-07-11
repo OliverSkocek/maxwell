@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from tensorflow.nn import convolution
-
+from scipy.special import factorial
 
 class Maxwell2DFiniteDifference:
     """
@@ -34,13 +34,15 @@ class Maxwell2DFiniteDifference:
         """
         Evolves an initial state of the electromagnetic field over a time interval.
 
-        :param initial_B: initial magnetic field.
-        :param initial_E: initial electric field.
-        :param initial_charge: initial charge density.
+        :param initial_B: initial magnetic field, callable (x,y) -> B.
+        :param initial_E: initial electric field, callable (x,y) -> (Ex,Ey)
+        :param initial_charge: initial charge density, callable (x,y) -> p.
         :param time: period of time to evolve the electromagnetic field.
         :param order: order of the ODE solver.
         :return: final magnetic field, final electric field, final charge density
         """
+        if order < 0:
+            raise ValueError("Order must be non negative!")
         N = self._number_divisions_per_axis
         faraday_filter = tf.constant(self._faraday_filter, name='faraday_filter', dtype=tf.float64)
         ampere_filter = tf.constant(self._ampere_filter, name='ampere_filter', dtype=tf.float64)
@@ -49,10 +51,11 @@ class Maxwell2DFiniteDifference:
         axis_diskrete = np.linspace(0, 1, self._number_divisions_per_axis)
         mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete))
 
-        self._U = initial_E(mesh) * self.mesh_size
+        self._U[:, :, 0] = np.vectorize(lambda x, y: initial_E(x, y)[0])(*mesh) * self.mesh_size
+        self._U[:, :, 1] = np.vectorize(lambda x, y: initial_E(x, y)[1])(*mesh) * self.mesh_size
         self._I = self._U / self._R
-        self._B = initial_B(mesh)
-        self._p = initial_charge(mesh) * self.mesh_size ** 2
+        self._B = np.vectorize(initial_B)(*mesh)
+        self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2
 
         eps = tf.constant(self._eps.reshape((1, N, N, 1)), name='dielectricity', dtype=tf.float64)
         mu = tf.constant(self._mu.reshape((1, N, N, 1)), name='permitivity', dtype=tf.float64)
@@ -63,13 +66,16 @@ class Maxwell2DFiniteDifference:
         p = tf.Variable(self._p.reshape((1, N, N, 1)), name='charge_density', dtype=tf.float64)
 
         for jter in range(int(time / self.step_size)):
-            I = U / R
-            dB = convolution(U, filters=faraday_filter, padding='SAME')
-            dp = convolution(I, filters=continuity_filter, padding='SAME')
-            dU = (convolution(B, filters=ampere_filter, padding='SAME') / eps / mu - I / eps)
+            dB = B
+            dU = U
+            for ord in range(1, order + 1):
+                I = dU / R
+                dB, dU = (convolution(dU, filters=faraday_filter, padding='SAME'),
+                          convolution(dB, filters=ampere_filter, padding='SAME') / eps / mu - I / eps)
+                dp = convolution(I, filters=continuity_filter, padding='SAME')
 
-            U.assign_add(dU * self.step_size)
-            B.assign_add(dB * self.step_size)
-            p.assign_add(dp * self.step_size)
+                U.assign_add(dU * self.step_size ** ord / factorial(ord))
+                B.assign_add(dB * self.step_size ** ord / factorial(ord))
+                p.assign_add(dp * self.step_size ** ord / factorial(ord))
         return tf.squeeze(B).numpy(), tf.squeeze(U).numpy() / self.mesh_size, tf.squeeze(I).numpy, tf.squeeze(
             p).numpy() / self.mesh_size ** 2
