@@ -30,7 +30,8 @@ class Maxwell2DFiniteDifference:
         if resistance:
             self._R = np.vectorize(resistance)(*mesh) / self.mesh_size
         else:
-            self._R = np.inf * np.ones(shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 1)) / self.mesh_size
+            self._R = np.inf * np.ones(
+                shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 1)) / self.mesh_size
 
         if permitivity:
             self._R = np.vectorize(permitivity)(*mesh)
@@ -50,9 +51,9 @@ class Maxwell2DFiniteDifference:
         self._faraday_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3) / self.mesh_size ** 2
         X = np.array([[0, 1, 0], [0, -1, 0], [0, 0, 0]])
         Y = np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]])
-        self._ampere_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0) * self.mesh_size
-        self.fig, self.axs = plt.subplots(2, 2)
-        self.camera = Camera(self.fig)
+        self._ampere_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0)
+        self.fig, self.axs = (None, None)
+        self.camera = None
         self.frame_rate = frame_rate
         self._video_constant = 1 / frame_rate
 
@@ -94,7 +95,9 @@ class Maxwell2DFiniteDifference:
         p = tf.Variable(self._p.reshape((1, N, N, 1)), name='charge_density', dtype=tf.float64)
 
         if video:
-            video_period = max(int(1 / (self.step_size * self.frame_rate)), 1)
+            self.fig, self.axs = plt.subplots(2, 2)
+            self.camera = Camera(self.fig)
+            video_period = max(1, int(1 / (self.frame_rate * self.step_size)))
         else:
             video_period = np.inf
 
@@ -111,14 +114,14 @@ class Maxwell2DFiniteDifference:
                 B.assign_add(dB * self.step_size ** ord / factorial(ord))
                 p.assign_add(dp * self.step_size ** ord / factorial(ord))
             if video and (jter % video_period == 0):
-                self.record(R, p, I, U / self.mesh_size, B)
+                self._record(R, p, I, U / self.mesh_size, B)
 
         if video:
             self.generate_mp4()
         return tf.squeeze(B).numpy(), tf.squeeze(U).numpy() / self.mesh_size, tf.squeeze(I).numpy, tf.squeeze(
             p).numpy() / self.mesh_size ** 2
 
-    def record(self, resistance, charge_density, current, electric_field, magnetic_field):
+    def _record(self, resistance, charge_density, current, electric_field, magnetic_field):
         """
         Records a state of the electromagnetic field.
         
@@ -140,22 +143,23 @@ class Maxwell2DFiniteDifference:
         current = tf.squeeze(current).numpy()
         e_field = tf.squeeze(electric_field).numpy()
         magnetic_field = np.flipud(tf.squeeze(magnetic_field).numpy())
-
-
+        arrow_num = int(current.shape[0] // 20)
 
         self.axs[0, 0].imshow(resistance_and_density)
         self.axs[0, 0].set_title('resistance/charge density')
-        self.axs[0, 1].quiver(np.linspace(0, 1, int(current.shape[0] / 10)),
-                              np.linspace(0, 1, int(current.shape[0] / 10)), current[::10, ::10, 0],
-                              current[::10, ::10, 1],
-                              scale=1)
+        self.axs[0, 1].quiver(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
+                              np.linspace(0, 1, int(current.shape[0] / arrow_num)),
+                              current[::arrow_num, ::arrow_num, 0],
+                              current[::arrow_num, ::arrow_num, 1],
+                              scale=3)
         self.axs[0, 1].set_title('current')
         self.axs[1, 0].imshow(magnetic_field, vmin=-1, vmax=1)
         self.axs[1, 0].set_title('magnetic field')
-        self.axs[1, 1].quiver(np.linspace(0, 1, int(current.shape[0] / 10)),
-                              np.linspace(0, 1, int(current.shape[0] / 10)), e_field[::10, ::10, 0],
-                              e_field[::10, ::10, 1],
-                              scale=1)
+        self.axs[1, 1].quiver(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
+                              np.linspace(0, 1, int(current.shape[0] / arrow_num)),
+                              e_field[::arrow_num, ::arrow_num, 0],
+                              e_field[::arrow_num, ::arrow_num, 1],
+                              scale=3)
         self.axs[1, 1].set_title('electric field')
         self.fig.set_figheight(10)
         self.fig.set_figwidth(10)
@@ -165,5 +169,5 @@ class Maxwell2DFiniteDifference:
         self.camera.snap()
 
     def generate_mp4(self, ):
-        anim = self.camera.animate(blit=True)
+        anim = self.camera.animate(blit=True, interval=self._video_constant * 1e3)
         display(HTML(anim.to_html5_video()))
