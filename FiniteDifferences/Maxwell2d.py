@@ -28,10 +28,10 @@ class Maxwell2DFiniteDifference:
         mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete))
 
         if resistance:
-            self._R = np.vectorize(resistance)(*mesh) / self.mesh_size
+            self._R = np.vectorize(resistance)(*mesh)
         else:
             self._R = np.inf * np.ones(
-                shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 1)) / self.mesh_size
+                shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
 
         if permitivity:
             self._R = np.vectorize(permitivity)(*mesh)
@@ -81,7 +81,7 @@ class Maxwell2DFiniteDifference:
 
         self._U[:, :, 0] = np.vectorize(lambda x, y: initial_E(x, y)[0])(*mesh) * self.mesh_size
         self._U[:, :, 1] = np.vectorize(lambda x, y: initial_E(x, y)[1])(*mesh) * self.mesh_size
-        self._I = self._U / self._R
+        self._I = self._U / self._R.reshape(self._number_divisions_per_axis, self._number_divisions_per_axis, 1)
         self._B = np.vectorize(initial_B)(*mesh)
         self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2
 
