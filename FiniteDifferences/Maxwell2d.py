@@ -81,16 +81,15 @@ class Maxwell2DFiniteDifference:
 
         self._U[:, :, 0] = np.vectorize(lambda x, y: initial_E(x, y)[0])(*mesh) * self.mesh_size
         self._U[:, :, 1] = np.vectorize(lambda x, y: initial_E(x, y)[1])(*mesh) * self.mesh_size
-        self._I = self._U / self._R.reshape(self._number_divisions_per_axis, self._number_divisions_per_axis, 1)
         self._B = np.vectorize(initial_B)(*mesh)
         self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2
 
         # TODO transform R, eps, and mu in discrete vars scaling with mesh_size in the right way
+        # TODO fix boundary condition
         eps = tf.constant(self._eps.reshape((1, N, N, 1)), name='dielectricity', dtype=tf.float64)
         mu = tf.constant(self._mu.reshape((1, N, N, 1)), name='permitivity', dtype=tf.float64)
         R = tf.constant(self._R.reshape((1, N, N, 1)), name='resistance', dtype=tf.float64)
         U = tf.Variable(self._U.reshape((1, N, N, 2)), name='e_field', dtype=tf.float64)
-        I = tf.Variable(self._I.reshape((1, N, N, 2)), name='current', dtype=tf.float64)
         B = tf.Variable(self._B.reshape((1, N, N, 1)), name='b_field', dtype=tf.float64)
         p = tf.Variable(self._p.reshape((1, N, N, 1)), name='charge_density', dtype=tf.float64)
 
@@ -114,44 +113,36 @@ class Maxwell2DFiniteDifference:
                 B.assign_add(dB * self.step_size ** ord / factorial(ord))
                 p.assign_add(dp * self.step_size ** ord / factorial(ord))
             if video and (jter % video_period == 0):
-                self._record(R, p, I, U / self.mesh_size, B)
+                self._record(p / self.mesh_size ** 2, U / R, U / self.mesh_size, B)
 
         if video:
             self.generate_mp4()
-        return tf.squeeze(B).numpy(), tf.squeeze(U).numpy() / self.mesh_size, tf.squeeze(I).numpy, tf.squeeze(
+        return tf.squeeze(B).numpy(), tf.squeeze(U).numpy() / self.mesh_size, tf.squeeze(U / R).numpy(), tf.squeeze(
             p).numpy() / self.mesh_size ** 2
 
-    def _record(self, resistance, charge_density, current, electric_field, magnetic_field):
+    def _record(self, charge_density, current, electric_field, magnetic_field):
         """
         Records a state of the electromagnetic field.
         
-        :param resistance: tensorflow array.
         :param charge_density: tensorflow array.
         :param current: tensorflow array.
         :param electric_field: tensorflow array.
         :param magnetic_field: tensorflow array.
         :return: None
         """
-        r = np.squeeze(resistance.numpy())
-        _p = np.squeeze(charge_density.numpy())
-        plus = _p.copy()
-        plus[plus < 0] = 0
-        minus = -_p
-        minus[minus < 0] = 0
-        resistance_and_density = np.stack([plus, 1 - r, minus]).transpose((2, 1, 0))
-        resistance_and_density = np.flipud((255 * resistance_and_density).astype(np.uint8))
+        charge_density = np.flipud(tf.squeeze(charge_density).numpy())
         current = tf.squeeze(current).numpy()
         e_field = tf.squeeze(electric_field).numpy()
         magnetic_field = np.flipud(tf.squeeze(magnetic_field).numpy())
         arrow_num = int(current.shape[0] // 20)
 
-        self.axs[0, 0].imshow(resistance_and_density)
-        self.axs[0, 0].set_title('resistance/charge density')
+        self.axs[0, 0].imshow(charge_density, vmin=-33, vmax=33)
+        self.axs[0, 0].set_title('charge density')
         self.axs[0, 1].quiver(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
                               np.linspace(0, 1, int(current.shape[0] / arrow_num)),
                               current[::arrow_num, ::arrow_num, 0],
                               current[::arrow_num, ::arrow_num, 1],
-                              scale=3)
+                              scale=0.1)
         self.axs[0, 1].set_title('current')
         self.axs[1, 0].imshow(magnetic_field, vmin=-1, vmax=1)
         self.axs[1, 0].set_title('magnetic field')
