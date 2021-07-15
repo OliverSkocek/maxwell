@@ -6,6 +6,15 @@ from matplotlib import pyplot as plt
 
 from celluloid import Camera
 from IPython.display import HTML, display
+from enum import Enum
+
+
+class DifferenceType(Enum):
+    """
+    Different difference types.
+    """
+    CENTRAL_DIFFERENCE = "central difference"
+    FORWARD_DIFFERENCE = "forward difference"
 
 
 class Maxwell2DFiniteDifference:
@@ -14,7 +23,7 @@ class Maxwell2DFiniteDifference:
     """
 
     def __init__(self, mesh_size, step_size, geometry=None, resistance=None, permitivity=None, permeability=None,
-                 frame_rate=8):
+                 frame_rate=8, diff_type: DifferenceType = DifferenceType.CENTRAL_DIFFERENCE):
         self.mesh_size = mesh_size
         self.step_size = step_size
         self.geometry = geometry
@@ -43,15 +52,26 @@ class Maxwell2DFiniteDifference:
         else:
             self._mu = np.ones(shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
 
-        X = np.array([[0, 0, 0], [1, -1, 0], [0, 0, 0]])
-        Y = np.array([[0, 1, 0], [0, -1, 0], [0, 0, 0]])
-        self._continuity_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3)
-        X = np.array([[0, 0, 0], [0, 1, 0], [0, -1, 0]])
-        Y = np.array([[0, 0, 0], [0, -1, 1], [0, 0, 0]])
-        self._faraday_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3) / self.mesh_size ** 2
-        X = np.array([[0, 1, 0], [0, -1, 0], [0, 0, 0]])
-        Y = np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]])
+        if diff_type == DifferenceType.CENTRAL_DIFFERENCE:
+            X = np.array([[0, 0, 0], [1, 0, -1], [0, 0, 0]])
+            Y = np.array([[0, 1, 0], [0, 0, 0], [0, -1, 0]])
+            self._continuity_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3) / 2
+            X = np.array([[0, 1, 0], [0, 0, 0], [0, -1, 0]])
+            Y = np.array([[0, 0, 0], [-1, 0, 1], [0, 0, 0]])
+            self._faraday_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0,
+                                                                                    3) / self.mesh_size ** 2 / 2
+            self._ampere_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0) / 2
+        else:
+            X = np.array([[0, 0, 0], [1, -1, 0], [0, 0, 0]])
+            Y = np.array([[0, 1, 0], [0, -1, 0], [0, 0, 0]])
+            self._continuity_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3)
+            X = np.array([[0, 0, 0], [0, 1, 0], [0, -1, 0]])
+            Y = np.array([[0, 0, 0], [0, -1, 1], [0, 0, 0]])
+            self._faraday_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3) / self.mesh_size ** 2
+            X = np.array([[0, 1, 0], [0, -1, 0], [0, 0, 0]])
+            Y = np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]])
         self._ampere_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0)
+
         self.fig, self.axs = (None, None)
         self.camera = None
         self.frame_rate = frame_rate
@@ -84,8 +104,7 @@ class Maxwell2DFiniteDifference:
         self._B = np.vectorize(initial_B)(*mesh)
         self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2
 
-        # TODO transform R, eps, and mu in discrete vars scaling with mesh_size in the right way
-        # TODO fix boundary condition
+        self._B = (2 * self._B + np.flipud(self._B) + np.fliplr(self._B)) / 4
         eps = tf.constant(self._eps.reshape((1, N, N, 1)), name='dielectricity', dtype=tf.float64)
         mu = tf.constant(self._mu.reshape((1, N, N, 1)), name='permitivity', dtype=tf.float64)
         R = tf.constant(self._R.reshape((1, N, N, 1)), name='resistance', dtype=tf.float64)
@@ -142,7 +161,7 @@ class Maxwell2DFiniteDifference:
                               np.linspace(0, 1, int(current.shape[0] / arrow_num)),
                               current[::arrow_num, ::arrow_num, 0],
                               current[::arrow_num, ::arrow_num, 1],
-                              scale=0.1)
+                              scale=0.08)
         self.axs[0, 1].set_title('current')
         self.axs[1, 0].imshow(magnetic_field, vmin=-1, vmax=1)
         self.axs[1, 0].set_title('magnetic field')
