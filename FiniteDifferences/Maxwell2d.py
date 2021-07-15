@@ -43,12 +43,12 @@ class Maxwell2DFiniteDifference:
                 shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
 
         if permitivity:
-            self._R = np.vectorize(permitivity)(*mesh)
+            self._eps = np.vectorize(permitivity)(*mesh)
         else:
             self._eps = np.ones(shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
 
         if permeability:
-            self._R = np.vectorize(permeability)(*mesh)
+            self._mu = np.vectorize(permeability)(*mesh)
         else:
             self._mu = np.ones(shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
 
