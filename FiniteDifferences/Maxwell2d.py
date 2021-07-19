@@ -125,7 +125,7 @@ class Maxwell2DFiniteDifference:
             for ord in range(1, order + 1):
                 j = g * dE
                 dB, dE = (convolution(dE, filters=faraday_filter, padding='SAME'),
-                          convolution(dB, filters=ampere_filter, padding='SAME') / eps / mu - j / eps)
+                          convolution(dB / eps / mu, filters=ampere_filter, padding='SAME') - j / eps)
                 dp = convolution(j * self.mesh_size, filters=continuity_filter, padding='SAME')
 
                 E.assign_add(dE * self.step_size ** ord / factorial(ord))
