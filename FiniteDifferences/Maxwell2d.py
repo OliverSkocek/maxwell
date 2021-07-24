@@ -70,7 +70,7 @@ class Maxwell2DFiniteDifference:
             self._faraday_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3) / self.mesh_size
             X = np.array([[0, 1, 0], [0, -1, 0], [0, 0, 0]])
             Y = np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]])
-        self._ampere_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0) / self.mesh_size
+            self._ampere_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0) / self.mesh_size
 
         self.fig, self.axs = (None, None)
         self.camera = None
@@ -104,7 +104,6 @@ class Maxwell2DFiniteDifference:
         self._B = np.vectorize(initial_B)(*mesh)
         self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2
 
-        self._B = (2 * self._B + np.flipud(self._B) + np.fliplr(self._B)) / 4
         eps = tf.constant(self._eps.reshape((1, N, N, 1)), name='dielectricity', dtype=tf.float64)
         mu = tf.constant(self._mu.reshape((1, N, N, 1)), name='permitivity', dtype=tf.float64)
         g = tf.constant(self._g.reshape((1, N, N, 1)), name='conductivity', dtype=tf.float64)
