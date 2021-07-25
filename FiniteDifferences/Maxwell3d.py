@@ -1,3 +1,5 @@
+"""Not working"""
+
 import tensorflow as tf
 import numpy as np
 from tensorflow.nn import convolution
@@ -6,15 +8,7 @@ from matplotlib import pyplot as plt
 
 from celluloid import Camera
 from IPython.display import HTML, display
-from enum import Enum
-
-
-class DifferenceType(Enum):
-    """
-    Different difference types.
-    """
-    CENTRAL_DIFFERENCE = "central difference"
-    FORWARD_DIFFERENCE = "forward difference"
+from FiniteDifferences.Maxwell2d import DifferenceType
 
 
 class Maxwell3DFiniteDifference:
