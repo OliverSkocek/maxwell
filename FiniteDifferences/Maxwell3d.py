@@ -32,7 +32,7 @@ class Maxwell3DFiniteDifference:
         self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
 
         axis_diskrete = np.linspace(0, 1, self._number_divisions_per_axis)
-        mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete))
+        mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete, axis_diskrete))
 
         if conductivity:
             self._g = np.vectorize(conductivity)(*mesh) / self.mesh_size
@@ -67,7 +67,7 @@ class Maxwell3DFiniteDifference:
             X = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]])
             Y = np.array([[0, 0, 0], [0, -1, 0], [0, 0, 0]])
 
-            Z3 = np.concatenate([np.zeros((3, 3, 1)), Y.reshape(3, 3, 1), np.zeros((3, 3, 1))], axis=2)
+            Z3 = np.concatenate([X.reshape(3, 3, 1), Y.reshape(3, 3, 1), np.zeros((3, 3, 1))], axis=2)
 
             self._continuity_filter = np.concatenate(
                 [Z1.reshape(3, 3, 3, 1), Z2.reshape(3, 3, 3, 1), Z3.reshape(3, 3, 3, 1)],
@@ -106,7 +106,7 @@ class Maxwell3DFiniteDifference:
 
             F3 = np.concatenate([Z1.reshape(3, 3, 3, 1), Z2.reshape(3, 3, 3, 1), np.zeros((3, 3, 3, 1))], axis=3)
 
-            self._faraday_filter = np.concatenate(
+            self._faraday_filter = -np.concatenate(
                 [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)], axis=4) / self.mesh_size
 
             X = np.array([[0, 0, 0], [0, -1, 0], [0, 0, 0]])
@@ -229,7 +229,7 @@ class Maxwell3DFiniteDifference:
         charge_density = np.flipud(tf.squeeze(charge_density).numpy()[:,:, N])
         current = tf.squeeze(current).numpy()[:, :, N, :2]
         e_field = tf.squeeze(electric_field).numpy()[:, :, N, :2]
-        magnetic_field = np.flipud(tf.squeeze(magnetic_field).numpy()[:, :, N, :2])
+        magnetic_field = np.flipud(tf.squeeze(magnetic_field).numpy()[:, :, N, 2])
 
         arrow_num = int(current.shape[0] // 20)
 
@@ -241,11 +241,7 @@ class Maxwell3DFiniteDifference:
                               current[::arrow_num, ::arrow_num, 1],
                               scale=0.2)
         self.axs[0, 1].set_title('current')
-        self.axs[0, 1].quiver(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
-                              np.linspace(0, 1, int(current.shape[0] / arrow_num)),
-                              magnetic_field[::arrow_num, ::arrow_num, 0],
-                              magnetic_field[::arrow_num, ::arrow_num, 1],
-                              scale=0.2)
+        self.axs[1, 0].imshow(magnetic_field, vmin=-1, vmax=1)
         self.axs[1, 0].set_title('magnetic field')
         self.axs[1, 1].quiver(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
                               np.linspace(0, 1, int(current.shape[0] / arrow_num)),
