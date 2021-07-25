@@ -35,7 +35,7 @@ class Maxwell3DFiniteDifference:
         mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete))
 
         if conductivity:
-            self._g = np.vectorize(conductivity)(*mesh)
+            self._g = np.vectorize(conductivity)(*mesh) / self.mesh_size
         else:
             self._g = np.zeros(
                 shape=(
@@ -96,25 +96,25 @@ class Maxwell3DFiniteDifference:
 
             F2 = np.concatenate([Z1.reshape(3, 3, 3, 1), np.zeros((3, 3, 3, 1)), Z2.reshape(3, 3, 3, 1)], axis=3)
 
-            Y = np.array([[0, 0, 0], [0, 1, 0], [0, -1, 0]])
+            Y = np.array([[0, 0, 0], [0, -1, 0], [0, 1, 0]])
 
             Z1 = np.concatenate([np.zeros((3, 3, 1)), Y.reshape(3, 3, 1), np.zeros((3, 3, 1))], axis=2)
 
-            Y = np.array([[0, 0, 0], [0, -1, 1], [0, 0, 0]])
+            Y = np.array([[0, 0, 0], [0, 1, -1], [0, 0, 0]])
 
             Z2 = np.concatenate([np.zeros((3, 3, 1)), Y.reshape(3, 3, 1), np.zeros((3, 3, 1))], axis=2)
 
             F3 = np.concatenate([Z1.reshape(3, 3, 3, 1), Z2.reshape(3, 3, 3, 1), np.zeros((3, 3, 3, 1))], axis=3)
 
             self._faraday_filter = np.concatenate(
-                [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)], axis=4) / self.mesh_size ** 2
+                [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)], axis=4) / self.mesh_size
 
             X = np.array([[0, 0, 0], [0, -1, 0], [0, 0, 0]])
             Y = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]])
 
             Z1 = np.concatenate([X.reshape(3, 3, 1), Y.reshape(3, 3, 1), np.zeros((3, 3, 1))], axis=2)
 
-            Y = np.array([[0, -1, 0], [0, 1, 0], [0, 0, 0]])
+            Y = np.array([[0, 1, 0], [0, -1, 0], [0, 0, 0]])
 
             Z2 = np.concatenate([np.zeros((3, 3, 1)), Y.reshape(3, 3, 1), np.zeros((3, 3, 1))], axis=2)
 
@@ -125,7 +125,7 @@ class Maxwell3DFiniteDifference:
 
             Z1 = np.concatenate([X.reshape(3, 3, 1), Y.reshape(3, 3, 1), np.zeros((3, 3, 1))], axis=2)
 
-            Y = np.array([[0, 0, 0], [1, -1, 0], [0, 0, 0]])
+            Y = np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]])
 
             Z2 = np.concatenate([np.zeros((3, 3, 1)), Y.reshape(3, 3, 1), np.zeros((3, 3, 1))], axis=2)
 
@@ -142,7 +142,7 @@ class Maxwell3DFiniteDifference:
             F3 = np.concatenate([Z1.reshape(3, 3, 3, 1), Z2.reshape(3, 3, 3, 1), np.zeros((3, 3, 3, 1))], axis=3)
 
             self._ampere_filter = np.concatenate(
-                [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)], axis=4) / self.mesh_size ** 2
+                [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)], axis=4) / self.mesh_size
 
         self.fig, self.axs = (None, None)
         self.camera = None
@@ -202,7 +202,7 @@ class Maxwell3DFiniteDifference:
                 j = g * dE
                 dB, dE = (convolution(dE, filters=faraday_filter, padding='SAME'),
                           convolution(dB / eps / mu, filters=ampere_filter, padding='SAME') - j / eps)
-                dp = convolution(j * self.mesh_size, filters=continuity_filter, padding='SAME')
+                dp = convolution(j * self.mesh_size ** 2, filters=continuity_filter, padding='SAME')
 
                 E.assign_add(dE * self.step_size ** ord / factorial(ord))
                 B.assign_add(dB * self.step_size ** ord / factorial(ord))
@@ -226,15 +226,11 @@ class Maxwell3DFiniteDifference:
         :return: None
         """
         N = charge_density.shape[2] // 2
-        charge_density = charge_density[:,:, N]
-        current = current[:, :, N, :2]
-        electric_field = electric_field[:, :, N, :2]
-        magnetic_field = magnetic_field[:, :, N, :2]
+        charge_density = np.flipud(tf.squeeze(charge_density).numpy()[:,:, N])
+        current = tf.squeeze(current).numpy()[:, :, N, :2]
+        e_field = tf.squeeze(electric_field).numpy()[:, :, N, :2]
+        magnetic_field = np.flipud(tf.squeeze(magnetic_field).numpy()[:, :, N, :2])
 
-        charge_density = np.flipud(tf.squeeze(charge_density).numpy())
-        current = tf.squeeze(current).numpy()
-        e_field = tf.squeeze(electric_field).numpy()
-        magnetic_field = np.flipud(tf.squeeze(magnetic_field).numpy())
         arrow_num = int(current.shape[0] // 20)
 
         self.axs[0, 0].imshow(charge_density, vmin=-33, vmax=33)
@@ -245,7 +241,11 @@ class Maxwell3DFiniteDifference:
                               current[::arrow_num, ::arrow_num, 1],
                               scale=0.2)
         self.axs[0, 1].set_title('current')
-        self.axs[1, 0].imshow(magnetic_field, vmin=-1, vmax=1)
+        self.axs[0, 1].quiver(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
+                              np.linspace(0, 1, int(current.shape[0] / arrow_num)),
+                              magnetic_field[::arrow_num, ::arrow_num, 0],
+                              magnetic_field[::arrow_num, ::arrow_num, 1],
+                              scale=0.2)
         self.axs[1, 0].set_title('magnetic field')
         self.axs[1, 1].quiver(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
                               np.linspace(0, 1, int(current.shape[0] / arrow_num)),
