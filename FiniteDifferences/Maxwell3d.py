@@ -89,10 +89,9 @@ class Maxwell3DFiniteDifference:
 
             Z1 = np.concatenate([np.zeros((3, 3, 1)), Y.reshape(3, 3, 1), Z.reshape(3, 3, 1)], axis=2)
 
-            Y = np.array([[0, 0, 0], [0, -1, 0], [0, 0, 0]])
-            Z = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]])
+            Y = np.array([[0, 0, 0], [0, -1, 1], [0, 0, 0]])
 
-            Z2 = np.concatenate([np.zeros((3, 3, 1)), Y.reshape(3, 3, 1), Z.reshape(3, 3, 1)], axis=2)
+            Z2 = np.concatenate([np.zeros((3, 3, 1)), Y.reshape(3, 3, 1), np.zeros((3, 3, 1))], axis=2)
 
             F2 = np.concatenate([Z1.reshape(3, 3, 3, 1), np.zeros((3, 3, 3, 1)), Z2.reshape(3, 3, 3, 1)], axis=3)
 
