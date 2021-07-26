@@ -35,7 +35,7 @@ class Maxwell3DFiniteDifference:
         mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete, axis_diskrete))
 
         if conductivity:
-            self._g = np.vectorize(conductivity)(*mesh) / self.mesh_size
+            self._g = np.vectorize(conductivity)(*mesh)
         else:
             self._g = np.zeros(
                 shape=(
