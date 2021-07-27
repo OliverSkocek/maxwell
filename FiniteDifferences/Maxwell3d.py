@@ -1,5 +1,3 @@
-"""Not working"""
-
 import tensorflow as tf
 import numpy as np
 from tensorflow.nn import convolution
