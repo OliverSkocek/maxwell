@@ -21,13 +21,13 @@ class Maxwell3DFiniteDifference:
         self.geometry = geometry
         self._number_divisions_per_axis = int(1 / self.mesh_size)
         self._E = np.zeros(shape=(
-        self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 3))
+            self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 3))
         self._I = np.zeros(shape=(
-        self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 3))
+            self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 3))
         self._B = np.zeros(shape=(
-        self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 3))
+            self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 3))
         self._p = np.zeros(shape=(
-        self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
+            self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
 
         axis_diskrete = np.linspace(0, 1, self._number_divisions_per_axis)
         mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete, axis_diskrete))
@@ -37,19 +37,20 @@ class Maxwell3DFiniteDifference:
         else:
             self._g = np.zeros(
                 shape=(
-                self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
+                    self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis,
+                    1))
 
         if permitivity:
             self._eps = np.vectorize(permitivity)(*mesh)
         else:
             self._eps = np.ones(shape=(
-            self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
+                self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
 
         if permeability:
             self._mu = np.vectorize(permeability)(*mesh)
         else:
             self._mu = np.ones(shape=(
-            self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
+                self._number_divisions_per_axis, self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
 
         if diff_type == DifferenceType.CENTRAL_DIFFERENCE:
             pass
@@ -104,7 +105,8 @@ class Maxwell3DFiniteDifference:
             F3 = np.concatenate([Z1.reshape(3, 3, 3, 1), Z2.reshape(3, 3, 3, 1), np.zeros((3, 3, 3, 1))], axis=3)
 
             self._faraday_filter = -np.concatenate(
-                [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)], axis=4) / self.mesh_size
+                [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)],
+                axis=4) / self.mesh_size
 
             X = np.array([[0, 0, 0], [0, -1, 0], [0, 0, 0]])
             Y = np.array([[0, 0, 0], [0, 1, 0], [0, 0, 0]])
@@ -139,9 +141,10 @@ class Maxwell3DFiniteDifference:
             F3 = np.concatenate([Z1.reshape(3, 3, 3, 1), Z2.reshape(3, 3, 3, 1), np.zeros((3, 3, 3, 1))], axis=3)
 
             self._ampere_filter = np.concatenate(
-                [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)], axis=4) / self.mesh_size
+                [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)],
+                axis=4) / self.mesh_size
 
-        self.fig, self.axs = (None, None)
+        self.fig = None
         self.camera = None
         self.frame_rate = frame_rate
         self._video_constant = 1 / frame_rate
@@ -186,7 +189,7 @@ class Maxwell3DFiniteDifference:
         p = tf.Variable(self._p.reshape((1, N, N, N, 1)), name='charge_density', dtype=tf.float64)
 
         if video:
-            self.fig, self.axs = plt.subplots(2, 2)
+            self.fig = plt.figure(figsize=(16, 16))
             self.camera = Camera(self.fig)
             video_period = max(1, int(1 / (self.frame_rate * self.step_size)))
         else:
@@ -222,32 +225,29 @@ class Maxwell3DFiniteDifference:
         :param magnetic_field: tensorflow array.
         :return: None
         """
-        N = charge_density.shape[2] // 2
-        charge_density = np.flipud(tf.squeeze(charge_density).numpy()[:,:, N])
-        current = tf.squeeze(current).numpy()[:, :, N, :2]
-        e_field = tf.squeeze(electric_field).numpy()[:, :, N, :2]
-        magnetic_field = np.flipud(tf.squeeze(magnetic_field).numpy()[:, :, N, 2])
+        current = tf.squeeze(current).numpy()
+        E = tf.squeeze(electric_field).numpy()
+        B = tf.squeeze(magnetic_field).numpy()
 
-        arrow_num = int(current.shape[0] // 20)
+        arrow_num = int(current.shape[0] // 10)
+        x, y, z = np.meshgrid(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
+                              np.linspace(0, 1, int(current.shape[0] / arrow_num)),
+                              np.linspace(0, 1, int(current.shape[0] / arrow_num)))
 
-        self.axs[0, 0].imshow(charge_density, vmin=-33, vmax=33)
-        self.axs[0, 0].set_title('charge density')
-        self.axs[0, 1].quiver(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
-                              np.linspace(0, 1, int(current.shape[0] / arrow_num)),
-                              current[::arrow_num, ::arrow_num, 0],
-                              current[::arrow_num, ::arrow_num, 1],
-                              scale=0.2)
-        self.axs[0, 1].set_title('current')
-        self.axs[1, 0].imshow(magnetic_field, vmin=-1, vmax=1)
-        self.axs[1, 0].set_title('magnetic field')
-        self.axs[1, 1].quiver(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
-                              np.linspace(0, 1, int(current.shape[0] / arrow_num)),
-                              e_field[::arrow_num, ::arrow_num, 0],
-                              e_field[::arrow_num, ::arrow_num, 1],
-                              scale=3)
-        self.axs[1, 1].set_title('electric field')
-        self.fig.set_figheight(10)
-        self.fig.set_figwidth(10)
+        ax = self.fig.add_subplot(1, 3, 1, projection='3d')
+        ax.quiver(x, y, z, E[::arrow_num, ::arrow_num, ::arrow_num, 0], E[::arrow_num, ::arrow_num, ::arrow_num, 1],
+                  E[::arrow_num, ::arrow_num, ::arrow_num, 2], length=0.3)
+        ax.set_title('electric field')
+        ax = self.fig.add_subplot(1, 3, 2, projection='3d')
+        ax.quiver(x, y, z, B[::arrow_num, ::arrow_num, ::arrow_num, 0], B[::arrow_num, ::arrow_num, ::arrow_num, 1],
+                  B[::arrow_num, ::arrow_num, ::arrow_num, 2], length=0.3)
+        ax.set_title('magnetic field')
+        ax = self.fig.add_subplot(1, 3, 3, projection='3d')
+        ax.quiver(x, y, z, current[::arrow_num, ::arrow_num, ::arrow_num, 0],
+                  current[::arrow_num, ::arrow_num, ::arrow_num, 1], current[::arrow_num, ::arrow_num, ::arrow_num, 2],
+                  length=0.3)
+        ax.set_title('current density')
+        plt.show()
         for ax in self.fig.axes:
             ax.set_xticks([])
             ax.set_yticks([])
