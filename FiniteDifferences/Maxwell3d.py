@@ -144,7 +144,7 @@ class Maxwell3DFiniteDifference:
                 [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)],
                 axis=4) / self.mesh_size
 
-        self.fig = None
+        self.fig, self.ax = (None, None)
         self.camera = None
         self.frame_rate = frame_rate
         self._video_constant = 1 / frame_rate
@@ -190,6 +190,7 @@ class Maxwell3DFiniteDifference:
 
         if video:
             self.fig = plt.figure(figsize=(16, 16))
+            self.ax = [self.fig.add_subplot(1, 3, k + 1, projection='3d') for k in range(3)]
             self.camera = Camera(self.fig)
             video_period = max(1, int(1 / (self.frame_rate * self.step_size)))
         else:
@@ -234,21 +235,21 @@ class Maxwell3DFiniteDifference:
                               np.linspace(0, 1, int(current.shape[0] / arrow_num)),
                               np.linspace(0, 1, int(current.shape[0] / arrow_num)))
 
-        ax = self.fig.add_subplot(1, 3, 1, projection='3d')
-        ax.quiver(x, y, z, E[::arrow_num, ::arrow_num, ::arrow_num, 0], E[::arrow_num, ::arrow_num, ::arrow_num, 1],
+        self.ax[0].quiver(x, y, z, E[::arrow_num, ::arrow_num, ::arrow_num, 0], E[::arrow_num, ::arrow_num, ::arrow_num, 1],
                   E[::arrow_num, ::arrow_num, ::arrow_num, 2], length=0.3)
-        ax.set_title('electric field')
-        ax = self.fig.add_subplot(1, 3, 2, projection='3d')
-        ax.quiver(x, y, z, B[::arrow_num, ::arrow_num, ::arrow_num, 0], B[::arrow_num, ::arrow_num, ::arrow_num, 1],
+        self.ax[0].set_title('electric field')
+
+        self.ax[1].quiver(x, y, z, B[::arrow_num, ::arrow_num, ::arrow_num, 0], B[::arrow_num, ::arrow_num, ::arrow_num, 1],
                   B[::arrow_num, ::arrow_num, ::arrow_num, 2], length=0.3)
-        ax.set_title('magnetic field')
-        ax = self.fig.add_subplot(1, 3, 3, projection='3d')
-        ax.quiver(x, y, z, current[::arrow_num, ::arrow_num, ::arrow_num, 0],
+        self.ax[1].set_title('magnetic field')
+
+        self.ax[2].quiver(x, y, z, current[::arrow_num, ::arrow_num, ::arrow_num, 0],
                   current[::arrow_num, ::arrow_num, ::arrow_num, 1], current[::arrow_num, ::arrow_num, ::arrow_num, 2],
                   length=0.3)
-        ax.set_title('current density')
-        plt.show()
-        for ax in self.fig.axes:
+
+        self.ax[2].set_title('current density')
+
+        for ax in self.ax:
             ax.set_xticks([])
             ax.set_yticks([])
         self.camera.snap()
