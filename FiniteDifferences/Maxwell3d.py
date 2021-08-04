@@ -15,7 +15,7 @@ class Maxwell3DFiniteDifference:
     """
 
     def __init__(self, mesh_size, step_size, geometry=None, conductivity=None, permitivity=None, permeability=None,
-                 frame_rate=8, diff_type: DifferenceType = DifferenceType.CENTRAL_DIFFERENCE):
+                 frame_rate=8, diff_type: DifferenceType = DifferenceType.FORWARD_DIFFERENCE):
         self.mesh_size = mesh_size
         self.step_size = step_size
         self.geometry = geometry
@@ -104,7 +104,7 @@ class Maxwell3DFiniteDifference:
 
             F3 = np.concatenate([Z1.reshape(3, 3, 3, 1), Z2.reshape(3, 3, 3, 1), np.zeros((3, 3, 3, 1))], axis=3)
 
-            self._faraday_filter = -np.concatenate(
+            self._faraday_filter = np.concatenate(
                 [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)],
                 axis=4) / self.mesh_size
 
@@ -140,7 +140,7 @@ class Maxwell3DFiniteDifference:
 
             F3 = np.concatenate([Z1.reshape(3, 3, 3, 1), Z2.reshape(3, 3, 3, 1), np.zeros((3, 3, 3, 1))], axis=3)
 
-            self._ampere_filter = np.concatenate(
+            self._ampere_filter = -np.concatenate(
                 [F1.reshape(3, 3, 3, 3, 1), F2.reshape(3, 3, 3, 3, 1), F3.reshape(3, 3, 3, 3, 1)],
                 axis=4) / self.mesh_size
 
@@ -236,16 +236,16 @@ class Maxwell3DFiniteDifference:
                               np.linspace(0, 1, int(current.shape[0] / arrow_num)))
 
         self.ax[0].quiver(x, y, z, E[::arrow_num, ::arrow_num, ::arrow_num, 0], E[::arrow_num, ::arrow_num, ::arrow_num, 1],
-                  E[::arrow_num, ::arrow_num, ::arrow_num, 2], length=0.3)
+                  E[::arrow_num, ::arrow_num, ::arrow_num, 2], length=1)
         self.ax[0].set_title('electric field')
 
         self.ax[1].quiver(x, y, z, B[::arrow_num, ::arrow_num, ::arrow_num, 0], B[::arrow_num, ::arrow_num, ::arrow_num, 1],
-                  B[::arrow_num, ::arrow_num, ::arrow_num, 2], length=0.3)
+                  B[::arrow_num, ::arrow_num, ::arrow_num, 2], length=1)
         self.ax[1].set_title('magnetic field')
 
         self.ax[2].quiver(x, y, z, current[::arrow_num, ::arrow_num, ::arrow_num, 0],
                   current[::arrow_num, ::arrow_num, ::arrow_num, 1], current[::arrow_num, ::arrow_num, ::arrow_num, 2],
-                  length=0.3)
+                  length=1)
 
         self.ax[2].set_title('current density')
 
