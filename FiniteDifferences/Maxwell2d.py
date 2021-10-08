@@ -77,13 +77,26 @@ class Maxwell2DFiniteDifference:
         self.frame_rate = frame_rate
         self._video_constant = 1 / frame_rate
 
+    def solve_poisson_problem(self, initial_charge, mesh):
+        """
+        Solves the Poisson Problem and returns the electric field.
+
+        :param initial_charge: initial charge density, callable (x,y) -> p.
+        :param mesh: mesh on which to solve the Poisson problem on.
+        :return: electric field
+        """
+        grad_filter = self._continuity_filter.copy().transpose(0, 1, 3, 2)
+        laplace = convolution(grad_filter, filters=grad_filter, padding='FULL')
+
     def evolve(self, initial_B, initial_E, initial_charge, integration_period, order=1, video=False):
         """
         Evolves an initial state of the electromagnetic field over a time interval "integration_period".
 
         :param initial_B: initial magnetic field, callable (x,y) -> B.
         :param initial_E: initial electric field, callable (x,y) -> (Ex,Ey)
-        :param initial_charge: initial charge density, callable (x,y) -> p.
+        :param initial_charge: initial charge density, callable (x,y) -> p. If the initial charge is
+        None, the charge density will be computed from the electric field, otherwise initial_E will
+        be ignored and the solution of the Poisson problem will be used as the initial electric field.
         :param integration_period: period of time to evolve the electromagnetic field.
         :param order: order of the ODE solver.
         :param video: if True a video is generated in the ipyhton notebook.
@@ -99,17 +112,22 @@ class Maxwell2DFiniteDifference:
         axis_diskrete = np.linspace(0, 1, self._number_divisions_per_axis)
         mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete))
 
-        self._E[:, :, 0] = np.vectorize(lambda x, y: initial_E(x, y)[0])(*mesh)
-        self._E[:, :, 1] = np.vectorize(lambda x, y: initial_E(x, y)[1])(*mesh)
         self._B = np.vectorize(initial_B)(*mesh)
-        self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2
 
         eps = tf.constant(self._eps.reshape((1, N, N, 1)), name='dielectricity', dtype=tf.float64)
         mu = tf.constant(self._mu.reshape((1, N, N, 1)), name='permitivity', dtype=tf.float64)
         g = tf.constant(self._g.reshape((1, N, N, 1)), name='conductivity', dtype=tf.float64)
-        E = tf.Variable(self._E.reshape((1, N, N, 2)), name='e_field', dtype=tf.float64)
         B = tf.Variable(self._B.reshape((1, N, N, 1)), name='b_field', dtype=tf.float64)
-        p = tf.Variable(self._p.reshape((1, N, N, 1)), name='charge_density', dtype=tf.float64)
+
+        if initial_charge is None:
+            self._E[:, :, 0] = np.vectorize(lambda x, y: initial_E(x, y)[0])(*mesh)
+            self._E[:, :, 1] = np.vectorize(lambda x, y: initial_E(x, y)[1])(*mesh)
+            E = tf.Variable(self._E.reshape((1, N, N, 2)), name='e_field', dtype=tf.float64)
+            p = convolution(E * self.mesh_size, filters=continuity_filter, padding='SAME')
+        else:
+            self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2
+            self._E = self.solve_poisson_problem(initial_charge=initial_charge, mesh=mesh)
+            p = tf.Variable(self._p.reshape((1, N, N, 1)), name='charge_density', dtype=tf.float64)
 
         if video:
             self.fig, self.axs = plt.subplots(2, 2)
