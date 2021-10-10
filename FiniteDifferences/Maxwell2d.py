@@ -2,6 +2,9 @@ import tensorflow as tf
 import numpy as np
 from tensorflow.nn import convolution
 from scipy.special import factorial
+from scipy.sparse import diags
+from scipy.sparse.linalg import spsolve
+
 from matplotlib import pyplot as plt
 
 from celluloid import Camera
@@ -32,6 +35,7 @@ class Maxwell2DFiniteDifference:
         self._I = np.zeros(shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 2))
         self._B = np.zeros(shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
         self._p = np.zeros(shape=(self._number_divisions_per_axis, self._number_divisions_per_axis, 1))
+        self.diff_type = diff_type
 
         axis_diskrete = np.linspace(0, 1, self._number_divisions_per_axis)
         mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete))
@@ -85,8 +89,40 @@ class Maxwell2DFiniteDifference:
         :param mesh: mesh on which to solve the Poisson problem on.
         :return: electric field
         """
-        grad_filter = self._continuity_filter.copy().transpose(0, 1, 3, 2)
-        laplace = convolution(grad_filter, filters=grad_filter, padding='FULL')
+        N = self._number_divisions_per_axis
+
+        if self.diff_type == DifferenceType.CENTRAL_DIFFERENCE:
+            X = np.array([[0, 0, 0], [-1, 0, 1], [0, 0, 0]])
+            Y = np.array([[0, -1, 0], [0, 0, 0], [0, 1, 0]])
+            grad_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0) / 2
+            x_0 = -np.ones((N * N,))
+            x_0[1:N + 1] = -0.75
+            x_0[N * N - N + 1:] = -0.75
+            x_0[range(N - 1, N * N, N)] = -0.75
+            x_0[range(N, N * N, N)] = -0.75
+            x_0[[0, N - 1, N * (N - 1), N * N - 1]] = - 0.5
+
+            x_1 = np.ones(shape=(N * N - 2,)) / 4
+            x_1[range(N - 1, N * N - 1, N)] = 0
+            x_1[range(N - 2, N * N - N, N)] = 0
+            laplace = diags([0.25, x_1, x_0, x_1, 0.25], offsets=[-2 * N, -2, 0, 2, 2 * N], shape=(N * N, N * N))
+        else:
+            X = np.array([[0, 0, 0], [0, -1, 1], [0, 0, 0]])
+            Y = np.array([[0, 0, 0], [0, -1, 0], [0, 1, 0]])
+            grad_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0).astype(np.float64)
+
+            x_0 = -4 * np.ones((N * N,))
+            x_0[0] = -2
+            x_0[1:N + 1] = -3
+            x_0[range(2 * N, N * N, N)] = -3
+            x_1 = np.ones(shape=(N * N,))
+            x_1[range(N - 1, N * N, N)] = 0
+            laplace = diags([1, x_1, x_0, x_1, 1], offsets=[-N, -1, 0, 1, N], shape=(N * N, N * N))
+
+        charge = np.vectorize(initial_charge)(*mesh)
+        phi = spsolve(laplace, charge.reshape(-1, 1)).reshape(N, N)
+        return convolution(phi.reshape(1, N, N, 1), filters=grad_filter.astype(np.float64),
+                           padding='SAME').numpy().squeeze()
 
     def evolve(self, initial_B, initial_E, initial_charge, integration_period, order=1, video=False):
         """
@@ -128,6 +164,7 @@ class Maxwell2DFiniteDifference:
             self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2
             self._E = self.solve_poisson_problem(initial_charge=initial_charge, mesh=mesh)
             p = tf.Variable(self._p.reshape((1, N, N, 1)), name='charge_density', dtype=tf.float64)
+            E = tf.Variable(self._E.reshape((1, N, N, 2)), name='e_field', dtype=tf.float64)
 
         if video:
             self.fig, self.axs = plt.subplots(2, 2)

@@ -319,8 +319,8 @@ class Mesh:
         :return:
         """
         if direct:
-            return np.linalg.solve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density),
-                                   boundary_condition=boundary_condition, direct=True)
+            return np.linalg.solve(A=self.compute_finite_laplace(direct), b=self.compute_source_vector(charge_density,
+                                   boundary_condition=boundary_condition, direct=True))
         else:
             return spsolve(A=self.compute_finite_laplace(direct),
                            b=self.compute_source_vector(charge_density, boundary_condition=boundary_condition))
