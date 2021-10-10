@@ -81,12 +81,11 @@ class Maxwell2DFiniteDifference:
         self.frame_rate = frame_rate
         self._video_constant = 1 / frame_rate
 
-    def solve_poisson_problem(self, initial_charge, mesh):
+    def solve_poisson_problem(self, charge):
         """
         Solves the Poisson Problem and returns the electric field.
 
-        :param initial_charge: initial charge density, callable (x,y) -> p.
-        :param mesh: mesh on which to solve the Poisson problem on.
+        :param charge: charge inhomogeneity.
         :return: electric field
         """
         N = self._number_divisions_per_axis
@@ -119,7 +118,6 @@ class Maxwell2DFiniteDifference:
             x_1[range(N - 1, N * N, N)] = 0
             laplace = diags([1, x_1, x_0, x_1, 1], offsets=[-N, -1, 0, 1, N], shape=(N * N, N * N))
 
-        charge = np.vectorize(initial_charge)(*mesh)
         phi = spsolve(laplace, charge.reshape(-1, 1)).reshape(N, N)
         return convolution(phi.reshape(1, N, N, 1), filters=grad_filter.astype(np.float64),
                            padding='SAME').numpy().squeeze()
@@ -162,7 +160,7 @@ class Maxwell2DFiniteDifference:
             p = convolution(E * self.mesh_size, filters=continuity_filter, padding='SAME')
         else:
             self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2
-            self._E = self.solve_poisson_problem(initial_charge=initial_charge, mesh=mesh)
+            self._E = self.solve_poisson_problem(charge=self._p)
             p = tf.Variable(self._p.reshape((1, N, N, 1)), name='charge_density', dtype=tf.float64)
             E = tf.Variable(self._E.reshape((1, N, N, 2)), name='e_field', dtype=tf.float64)
 
