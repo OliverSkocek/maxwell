@@ -119,7 +119,7 @@ class Maxwell2DFiniteDifference:
             laplace = diags([1, x_1, x_0, x_1, 1], offsets=[-N, -1, 0, 1, N], shape=(N * N, N * N))
 
         phi = spsolve(laplace, charge.reshape(-1, 1)).reshape(N, N)
-        return -convolution(phi.reshape(1, N, N, 1), filters=grad_filter.astype(np.float64) / self.mesh_size,
+        return convolution(phi.reshape(1, N, N, 1), filters=grad_filter.astype(np.float64) / self.mesh_size,
                             padding='SAME').numpy().squeeze()
 
     def evolve(self, initial_B, initial_E, initial_charge, integration_period, order=1, video=False):
