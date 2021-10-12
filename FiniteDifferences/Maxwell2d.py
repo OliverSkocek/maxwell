@@ -80,6 +80,7 @@ class Maxwell2DFiniteDifference:
         self.camera = None
         self.frame_rate = frame_rate
         self._video_constant = 1 / frame_rate
+        self._scales = None
 
     def solve_poisson_problem(self, charge):
         """
@@ -104,7 +105,8 @@ class Maxwell2DFiniteDifference:
             x_1 = np.ones(shape=(N * N - 2,)) / 4
             x_1[range(N - 1, N * N - 1, N)] = 0
             x_1[range(N - 2, N * N - N, N)] = 0
-            laplace = diags([0.25, x_1, x_0, x_1, 0.25], offsets=[-2 * N, -2, 0, 2, 2 * N], shape=(N * N, N * N))
+            laplace = diags([0.25, x_1, x_0, x_1, 0.25], offsets=[-2 * N, -2, 0, 2, 2 * N], shape=(N * N, N * N),
+                            format='csr')
         else:
             X = np.array([[0, 0, 0], [0, -1, 1], [0, 0, 0]])
             Y = np.array([[0, 0, 0], [0, -1, 0], [0, 1, 0]])
@@ -116,7 +118,7 @@ class Maxwell2DFiniteDifference:
             x_0[range(2 * N, N * N, N)] = -3
             x_1 = np.ones(shape=(N * N,))
             x_1[range(N - 1, N * N, N)] = 0
-            laplace = diags([1, x_1, x_0, x_1, 1], offsets=[-N, -1, 0, 1, N], shape=(N * N, N * N))
+            laplace = diags([1, x_1, x_0, x_1, 1], offsets=[-N, -1, 0, 1, N], shape=(N * N, N * N), format='csr')
 
         phi = spsolve(laplace, charge.reshape(-1, 1)).reshape(N, N)
         return convolution(phi.reshape(1, N, N, 1), filters=grad_filter.astype(np.float64) / self.mesh_size,
@@ -182,7 +184,7 @@ class Maxwell2DFiniteDifference:
                 p = tf.squeeze(
                     convolution(E * self.mesh_size, filters=-continuity_filter,
                                 padding='SAME')).numpy() / self.mesh_size ** 2
-                self._record(p * 40, g * E * self.mesh_size * 400, E * 40, B * 800)
+                self._record(p, g * E * self.mesh_size, E, B)
 
         if video:
             self.generate_mp4()
@@ -205,6 +207,16 @@ class Maxwell2DFiniteDifference:
         e_field = tf.squeeze(electric_field).numpy()
         magnetic_field = np.flipud(tf.squeeze(magnetic_field).numpy())
         arrow_num = int(current.shape[0] // 20)
+
+        if self._scales is None:
+            self._scales = (
+                np.max(charge_density) * 255, np.max(current) * 255, np.max(e_field) * 255,
+                np.max(magnetic_field) * 125)
+
+        charge_density /= self._scales[0]
+        current /= self._scales[1]
+        e_field /= self._scales[2]
+        magnetic_field /= self._scales[3]
 
         self.axs[0, 0].imshow(charge_density, vmin=-33, vmax=33)
         self.axs[0, 0].set_title('charge density')

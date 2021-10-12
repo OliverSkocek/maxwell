@@ -307,7 +307,7 @@ class Mesh:
 
             return sparse.diags(diagonals, [0, 1, -1, self.number_of_divisions, -self.number_of_divisions,
                                             self.number_of_divisions + 1,
-                                            -(self.number_of_divisions + 1)])
+                                            -(self.number_of_divisions + 1)], format='csr')
 
     def solve(self, charge_density, boundary_condition=None, direct=False):
         """
