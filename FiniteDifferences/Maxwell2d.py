@@ -210,13 +210,13 @@ class Maxwell2DFiniteDifference:
 
         if self._scales is None:
             self._scales = (
-                np.max(charge_density) * 255, np.max(current) * 255, np.max(e_field) * 255,
-                np.max(magnetic_field) * 125)
+                125 / np.max(charge_density), 1 / np.max(e_field),
+                512)
 
-        charge_density /= self._scales[0]
-        current /= self._scales[1]
-        e_field /= self._scales[2]
-        magnetic_field /= self._scales[3]
+        charge_density *= self._scales[0]
+        current *= self._scales[1] * 5
+        e_field *= self._scales[1]
+        magnetic_field *= self._scales[2]
 
         self.axs[0, 0].imshow(charge_density, vmin=-33, vmax=33)
         self.axs[0, 0].set_title('charge density')
