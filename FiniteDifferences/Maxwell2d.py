@@ -120,7 +120,7 @@ class Maxwell2DFiniteDifference:
 
         phi = spsolve(laplace, charge.reshape(-1, 1)).reshape(N, N)
         return convolution(phi.reshape(1, N, N, 1), filters=grad_filter.astype(np.float64) / self.mesh_size,
-                            padding='SAME').numpy().squeeze()
+                           padding='SAME').numpy().squeeze()
 
     def evolve(self, initial_B, initial_E, initial_charge, integration_period, order=1, video=False):
         """
@@ -157,11 +157,8 @@ class Maxwell2DFiniteDifference:
             self._E[:, :, 0] = np.vectorize(lambda x, y: initial_E(x, y)[0])(*mesh)
             self._E[:, :, 1] = np.vectorize(lambda x, y: initial_E(x, y)[1])(*mesh)
             E = tf.Variable(self._E.reshape((1, N, N, 2)), name='e_field', dtype=tf.float64)
-            p = convolution(E * self.mesh_size, filters=continuity_filter, padding='SAME')
         else:
-            self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2
-            self._E = self.solve_poisson_problem(charge=self._p)
-            p = tf.Variable(self._p.reshape((1, N, N, 1)), name='charge_density', dtype=tf.float64)
+            self._E = self.solve_poisson_problem(charge=np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 2)
             E = tf.Variable(self._E.reshape((1, N, N, 2)), name='e_field', dtype=tf.float64)
 
         if video:
@@ -178,18 +175,20 @@ class Maxwell2DFiniteDifference:
                 j = g * dE
                 dB, dE = (convolution(dE, filters=faraday_filter, padding='SAME'),
                           convolution(dB / eps / mu, filters=ampere_filter, padding='SAME') - j / eps)
-                dp = convolution(j * self.mesh_size, filters=continuity_filter, padding='SAME')
 
                 E.assign_add(dE * self.step_size ** ord / factorial(ord))
                 B.assign_add(dB * self.step_size ** ord / factorial(ord))
-                p.assign_add(dp * self.step_size ** ord / factorial(ord))
             if video and (jter % video_period == 0):
-                self._record(p / self.mesh_size ** 2, g * E * self.mesh_size, E, B)
+                p = tf.squeeze(
+                    convolution(E * self.mesh_size, filters=-continuity_filter,
+                                padding='SAME')).numpy() / self.mesh_size ** 2
+                self._record(p * 40, g * E * self.mesh_size * 400, E * 40, B * 800)
 
         if video:
             self.generate_mp4()
         return tf.squeeze(B).numpy(), tf.squeeze(E).numpy(), tf.squeeze(g * E * self.mesh_size).numpy(), tf.squeeze(
-            p).numpy() / self.mesh_size ** 2
+            convolution(E * self.mesh_size, filters=-continuity_filter,
+                        padding='SAME')).numpy() / self.mesh_size ** 2
 
     def _record(self, charge_density, current, electric_field, magnetic_field):
         """
