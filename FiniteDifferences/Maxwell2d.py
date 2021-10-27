@@ -60,10 +60,9 @@ class Maxwell2DFiniteDifference:
             X = np.array([[0, 0, 0], [1, 0, -1], [0, 0, 0]])
             Y = np.array([[0, 1, 0], [0, 0, 0], [0, -1, 0]])
             self._continuity_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3) / 2
-            X = np.array([[0, 1, 0], [0, 0, 0], [0, -1, 0]])
-            Y = np.array([[0, 0, 0], [-1, 0, 1], [0, 0, 0]])
-            self._faraday_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0,
-                                                                                    3) / self.mesh_size / 2
+            X = np.array([[0, -1, 0], [0, 0, 0], [0, 1, 0]])
+            Y = np.array([[0, 0, 0], [1, 0, -1], [0, 0, 0]])
+            self._faraday_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3) / self.mesh_size / 2
             self._ampere_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0) / self.mesh_size / 2
         else:
             X = np.array([[0, 0, 0], [1, -1, 0], [0, 0, 0]])
@@ -71,10 +70,10 @@ class Maxwell2DFiniteDifference:
             self._continuity_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3)
             X = np.array([[0, 0, 0], [0, -1, 0], [0, 1, 0]])
             Y = np.array([[0, 0, 0], [0, 1, -1], [0, 0, 0]])
-            self._faraday_filter = -np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3) / self.mesh_size
+            self._faraday_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 0, 3) / self.mesh_size
             X = np.array([[0, 1, 0], [0, -1, 0], [0, 0, 0]])
             Y = np.array([[0, 0, 0], [-1, 1, 0], [0, 0, 0]])
-            self._ampere_filter = np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0) / self.mesh_size
+            self._ampere_filter = -np.stack([X, Y]).reshape((2, 3, 3, 1)).transpose(1, 2, 3, 0) / self.mesh_size
 
         self.fig, self.axs = (None, None)
         self.camera = None
