@@ -123,7 +123,8 @@ class Maxwell2DFiniteDifference:
         return convolution(phi.reshape(1, N, N, 1), filters=grad_filter.astype(np.float64) / self.mesh_size,
                            padding='SAME').numpy().squeeze()
 
-    def evolve(self, initial_B, initial_E, initial_charge, integration_period, order=1, video=False):
+    def evolve(self, initial_B, initial_E, initial_charge, integration_period, boundary='dirichlet', order=1,
+               video=False):
         """
         Evolves an initial state of the electromagnetic field over a time interval "integration_period".
 
@@ -133,6 +134,7 @@ class Maxwell2DFiniteDifference:
         None, the charge density will be computed from the electric field, otherwise initial_E will
         be ignored and the solution of the Poisson problem will be used as the initial electric field.
         :param integration_period: period of time to evolve the electromagnetic field.
+        :param boundary: type of boundary condition, default is 'dirichlet', alternative is 'neumann'.
         :param order: order of the ODE solver.
         :param video: if True a video is generated in the ipyhton notebook.
         :return: final magnetic field, final electric field, final charge density
@@ -140,6 +142,25 @@ class Maxwell2DFiniteDifference:
         if order < 0:
             raise ValueError("Order must be non negative!")
         N = self._number_divisions_per_axis
+        if boundary == 'dirichlet':
+            _Rand = np.ones((N, N,))
+            _Rand[:, -1] = 0.0
+            _Rand[-1, :] = 0.0
+            d_rand = tf.constant(_Rand.reshape((1, N, N, 1)), name='boundary', dtype=tf.float64)
+            n_rand = 1.0
+        elif boundary == 'neumann':
+            _Rand = np.ones((N, N, 2))
+            _Rand[0, :, 0] = 0.0
+            _Rand[:, -1, 0] = 0.0
+            _Rand[-1, :, 1] = 0.0
+            _Rand[:, 0, 1] = 0.0
+            d_rand = 1.0
+            n_rand = tf.constant(_Rand.reshape((1, N, N, 2)), name='boundary', dtype=tf.float64)
+        else:
+            _Rand = 1.0
+            d_rand = 1.0
+            n_rand = 1.0
+
         faraday_filter = tf.constant(self._faraday_filter, name='faraday_filter', dtype=tf.float64)
         ampere_filter = tf.constant(self._ampere_filter, name='ampere_filter', dtype=tf.float64)
         continuity_filter = tf.constant(self._continuity_filter, name='continuity_filter', dtype=tf.float64)
@@ -174,22 +195,24 @@ class Maxwell2DFiniteDifference:
             dE = E
             for ord in range(1, order + 1):
                 j = g * dE
-                dB, dE = (convolution(dE, filters=faraday_filter, padding='SAME'),
-                          convolution(dB / eps / mu, filters=ampere_filter, padding='SAME') - j / eps)
+                dB, dE = (d_rand * convolution(dE, filters=faraday_filter, padding='SAME'),
+                          n_rand * convolution(dB / eps / mu, filters=ampere_filter, padding='SAME') - j / eps)
 
                 E.assign_add(dE * self.step_size ** ord / factorial(ord))
                 B.assign_add(dB * self.step_size ** ord / factorial(ord))
             if video and (jter % video_period == 0):
                 p = tf.squeeze(
                     convolution(E * self.mesh_size, filters=-continuity_filter,
-                                padding='SAME')).numpy() / self.mesh_size ** 2
+                                padding='SAME')).numpy() / self.mesh_size ** 2 * (
+                        np.prod(_Rand, axis=2) if boundary == 'neumann' else 1.0)
                 self._record(p, g * E * self.mesh_size, E, B)
 
         if video:
             self.generate_mp4()
         return tf.squeeze(B).numpy(), tf.squeeze(E).numpy(), tf.squeeze(g * E * self.mesh_size).numpy(), tf.squeeze(
             convolution(E * self.mesh_size, filters=-continuity_filter,
-                        padding='SAME')).numpy() / self.mesh_size ** 2
+                        padding='SAME')).numpy() / self.mesh_size ** 2 * (
+                   np.prod(_Rand, axis=2) if boundary == 'neumann' else 1.0)
 
     def _record(self, charge_density, current, electric_field, magnetic_field):
         """
