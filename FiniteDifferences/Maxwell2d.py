@@ -134,7 +134,7 @@ class Maxwell2DFiniteDifference:
         None, the charge density will be computed from the electric field, otherwise initial_E will
         be ignored and the solution of the Poisson problem will be used as the initial electric field.
         :param integration_period: period of time to evolve the electromagnetic field.
-        :param boundary: type of boundary condition, default is 'dirichlet', alternative is 'neumann'.
+        :param boundary: type of boundary condition, default is 'dirichlet', alternative is 'normal'.
         :param order: order of the ODE solver.
         :param video: if True a video is generated in the ipyhton notebook.
         :return: final magnetic field, final electric field, final charge density
@@ -148,7 +148,7 @@ class Maxwell2DFiniteDifference:
             _Rand[-1, :] = 0.0
             d_rand = tf.constant(_Rand.reshape((1, N, N, 1)), name='boundary', dtype=tf.float64)
             n_rand = 1.0
-        elif boundary == 'neumann':
+        elif boundary == 'normal':
             _Rand = np.ones((N, N, 2))
             _Rand[0, :, 0] = 0.0
             _Rand[:, -1, 0] = 0.0
@@ -200,11 +200,11 @@ class Maxwell2DFiniteDifference:
 
                 E.assign_add(dE * self.step_size ** ord / factorial(ord))
                 B.assign_add(dB * self.step_size ** ord / factorial(ord))
-            if video and (jter % video_period == 0):
+            if video and (jter % video_period == 0) and jter > 5 * video_period:
                 p = tf.squeeze(
                     convolution(E * self.mesh_size, filters=-continuity_filter,
                                 padding='SAME')).numpy() / self.mesh_size ** 2 * (
-                        np.prod(_Rand, axis=2) if boundary == 'neumann' else 1.0)
+                        np.prod(_Rand, axis=2) if boundary == 'normal' else 1.0)
                 self._record(p, g * E * self.mesh_size, E, B)
 
         if video:
@@ -212,7 +212,7 @@ class Maxwell2DFiniteDifference:
         return tf.squeeze(B).numpy(), tf.squeeze(E).numpy(), tf.squeeze(g * E * self.mesh_size).numpy(), tf.squeeze(
             convolution(E * self.mesh_size, filters=-continuity_filter,
                         padding='SAME')).numpy() / self.mesh_size ** 2 * (
-                   np.prod(_Rand, axis=2) if boundary == 'neumann' else 1.0)
+                   np.prod(_Rand, axis=2) if boundary == 'normal' else 1.0)
 
     def _record(self, charge_density, current, electric_field, magnetic_field):
         """
@@ -231,16 +231,14 @@ class Maxwell2DFiniteDifference:
         arrow_num = int(current.shape[0] // 20)
 
         if self._scales is None:
-            self._scales = (
-                125 / np.max(charge_density), 1 / np.max(e_field),
-                512)
+            self._scales = (np.max(charge_density), np.max(current), np.max(e_field), np.max(magnetic_field))
 
-        charge_density *= self._scales[0]
-        current *= self._scales[1] * 5
-        e_field *= self._scales[1]
-        magnetic_field *= self._scales[2]
+        charge_density /= (self._scales[0] + 1.0)
+        current /= (self._scales[1] + 1.0)
+        e_field /= (self._scales[2] + 1.0)
+        magnetic_field /= (self._scales[3] + 1.0)
 
-        self.axs[0, 0].imshow(charge_density, vmin=-33, vmax=33)
+        self.axs[0, 0].imshow(charge_density, vmin=-1, vmax=1)
         self.axs[0, 0].set_title('charge density')
         self.axs[0, 1].quiver(np.linspace(0, 1, int(current.shape[0] / arrow_num)),
                               np.linspace(0, 1, int(current.shape[0] / arrow_num)),
