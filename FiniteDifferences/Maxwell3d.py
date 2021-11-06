@@ -3,6 +3,8 @@ import numpy as np
 from tensorflow.nn import convolution
 from scipy.special import factorial
 from matplotlib import pyplot as plt
+from scipy.sparse import diags
+from scipy.sparse.linalg import spsolve
 
 from celluloid import Camera
 from IPython.display import HTML, display
@@ -149,6 +151,43 @@ class Maxwell3DFiniteDifference:
         self.frame_rate = frame_rate
         self._video_constant = 1 / frame_rate
 
+    def solve_poisson_problem(self, charge):
+        """
+        Solves the Poisson Problem and returns the electric field.
+
+        :param charge: charge inhomogeneity.
+        :return: electric field
+        """
+        N = self._number_divisions_per_axis
+
+        gradient = self._continuity_filter.copy().transpose(0, 1, 2, 4, 3)
+        for s in range(3):
+            for i in range(3):
+                for j in range(3):
+                    for k in range(3):
+                        gradient[i, j, k, 0, s] = self._continuity_filter[-i - 1, -j - 1, -k - 1, s, 0]
+
+        z = 5 * np.ones((N,))
+        z[0] -= 1
+        _z = np.concatenate([z + 1 if j else z for j in range(N)])
+        L0 = -np.concatenate([_z if j else _z - 1 for j in range(N)]) * self.mesh_size
+
+        z = (-1) * np.ones((N,))
+        z[-1] += 1
+        L1 = np.concatenate([z for _ in range(N ** 2)])
+        L1 = -L1[:-1] * self.mesh_size
+
+        z = -np.ones((N,))
+        _z = np.concatenate([z if (j + 1) % N else 0 * z for j in range(N)])
+        L2 = -np.concatenate([_z for _ in range(N)])[:-N] * self.mesh_size
+
+        laplace = diags([self.mesh_size, L2, L1, L0, L1, L2, self.mesh_size],
+                        offsets=[-N ** 2, -N, -1, 0, 1, N, N ** 2], shape=(N ** 3, N ** 3), format='csr')
+
+        phi = spsolve(laplace, charge.reshape(-1, 1)).reshape(N, N, N)
+        return convolution(phi.reshape(1, N, N, N, 1), filters=gradient.astype(np.float64) / self.mesh_size,
+                           padding='SAME').numpy().squeeze()
+
     def evolve(self, initial_B, initial_E, initial_charge, integration_period, order=1, video=False):
         """
         Evolves an initial state of the electromagnetic field over a time interval "integration_period".
@@ -171,23 +210,23 @@ class Maxwell3DFiniteDifference:
         axis_diskrete = np.linspace(0, 1, self._number_divisions_per_axis)
         mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete, axis_diskrete))
 
-        self._E[:, :, :, 0] = np.vectorize(lambda x, y, z: initial_E(x, y, z)[0])(*mesh)
-        self._E[:, :, :, 1] = np.vectorize(lambda x, y, z: initial_E(x, y, z)[1])(*mesh)
-        self._E[:, :, :, 2] = np.vectorize(lambda x, y, z: initial_E(x, y, z)[2])(*mesh)
-
         self._B[:, :, :, 0] = np.vectorize(lambda x, y, z: initial_B(x, y, z)[0])(*mesh)
         self._B[:, :, :, 1] = np.vectorize(lambda x, y, z: initial_B(x, y, z)[1])(*mesh)
         self._B[:, :, :, 2] = np.vectorize(lambda x, y, z: initial_B(x, y, z)[2])(*mesh)
 
-        self._p = np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 3
-
         eps = tf.constant(self._eps.reshape((1, N, N, N, 1)), name='dielectricity', dtype=tf.float64)
         mu = tf.constant(self._mu.reshape((1, N, N, N, 1)), name='permitivity', dtype=tf.float64)
         g = tf.constant(self._g.reshape((1, N, N, N, 1)), name='conductivity', dtype=tf.float64)
-        E = tf.Variable(self._E.reshape((1, N, N, N, 3)), name='e_field', dtype=tf.float64)
         B = tf.Variable(self._B.reshape((1, N, N, N, 3)), name='b_field', dtype=tf.float64)
-        p = tf.Variable(self._p.reshape((1, N, N, N, 1)), name='charge_density', dtype=tf.float64)
 
+        if initial_charge is None:
+            self._E[:, :, :, 0] = np.vectorize(lambda x, y, z: initial_E(x, y, z)[0])(*mesh)
+            self._E[:, :, :, 1] = np.vectorize(lambda x, y, z: initial_E(x, y, z)[1])(*mesh)
+            self._E[:, :, :, 2] = np.vectorize(lambda x, y, z: initial_E(x, y, z)[2])(*mesh)
+            E = tf.Variable(self._E.reshape((1, N, N, N, 3)), name='e_field', dtype=tf.float64)
+        else:
+            self._E = self.solve_poisson_problem(charge=np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 3)
+            E = tf.Variable(self._E.reshape((1, N, N, N, 3)), name='e_field', dtype=tf.float64)
         if video:
             self.fig = plt.figure(figsize=(16, 16))
             self.ax = [self.fig.add_subplot(1, 3, k + 1, projection='3d') for k in range(3)]
@@ -203,18 +242,19 @@ class Maxwell3DFiniteDifference:
                 j = g * dE
                 dB, dE = (convolution(dE, filters=faraday_filter, padding='SAME'),
                           convolution(dB / eps / mu, filters=ampere_filter, padding='SAME') - j / eps)
-                dp = convolution(j * self.mesh_size ** 2, filters=continuity_filter, padding='SAME')
 
                 E.assign_add(dE * self.step_size ** ord / factorial(ord))
                 B.assign_add(dB * self.step_size ** ord / factorial(ord))
-                p.assign_add(dp * self.step_size ** ord / factorial(ord))
-            if video and (jter % video_period == 0):
+            if video and (jter % video_period == 0) and jter > 5 * video_period:
+                p = tf.squeeze(
+                    convolution(E * self.mesh_size ** 2, filters=-continuity_filter,
+                                padding='SAME')).numpy() / self.mesh_size ** 3
                 self._record(p / self.mesh_size ** 3, g * E * self.mesh_size, E, B)
-
         if video:
             self.generate_mp4()
         return tf.squeeze(B).numpy(), tf.squeeze(E).numpy(), tf.squeeze(g * E * self.mesh_size).numpy(), tf.squeeze(
-            p).numpy() / self.mesh_size ** 3
+            convolution(E * self.mesh_size ** 2, filters=-continuity_filter,
+                        padding='SAME')).numpy() / self.mesh_size ** 3
 
     def _record(self, charge_density, current, electric_field, magnetic_field):
         """
@@ -235,17 +275,20 @@ class Maxwell3DFiniteDifference:
                               np.linspace(0, 1, int(current.shape[0] / arrow_num)),
                               np.linspace(0, 1, int(current.shape[0] / arrow_num)))
 
-        self.ax[0].quiver(x, y, z, E[::arrow_num, ::arrow_num, ::arrow_num, 0], E[::arrow_num, ::arrow_num, ::arrow_num, 1],
-                  E[::arrow_num, ::arrow_num, ::arrow_num, 2], length=1)
+        self.ax[0].quiver(x, y, z, E[::arrow_num, ::arrow_num, ::arrow_num, 0],
+                          E[::arrow_num, ::arrow_num, ::arrow_num, 1],
+                          E[::arrow_num, ::arrow_num, ::arrow_num, 2], length=1)
         self.ax[0].set_title('electric field')
 
-        self.ax[1].quiver(x, y, z, B[::arrow_num, ::arrow_num, ::arrow_num, 0], B[::arrow_num, ::arrow_num, ::arrow_num, 1],
-                  B[::arrow_num, ::arrow_num, ::arrow_num, 2], length=1)
+        self.ax[1].quiver(x, y, z, B[::arrow_num, ::arrow_num, ::arrow_num, 0],
+                          B[::arrow_num, ::arrow_num, ::arrow_num, 1],
+                          B[::arrow_num, ::arrow_num, ::arrow_num, 2], length=1)
         self.ax[1].set_title('magnetic field')
 
         self.ax[2].quiver(x, y, z, current[::arrow_num, ::arrow_num, ::arrow_num, 0],
-                  current[::arrow_num, ::arrow_num, ::arrow_num, 1], current[::arrow_num, ::arrow_num, ::arrow_num, 2],
-                  length=1)
+                          current[::arrow_num, ::arrow_num, ::arrow_num, 1],
+                          current[::arrow_num, ::arrow_num, ::arrow_num, 2],
+                          length=1)
 
         self.ax[2].set_title('current density')
 
