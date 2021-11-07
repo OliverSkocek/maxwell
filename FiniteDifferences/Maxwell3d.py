@@ -208,12 +208,12 @@ class Maxwell3DFiniteDifference:
         _Rand[:, :, -1, :, :] = 0.0
         _Rand[:, -1, :, :, :] = 0.0
         _Rand = np.concatenate([_Rand.transpose((0, 3, 1, 2, 4)), _Rand.transpose((0, 1, 3, 2, 4)), _Rand],
-                               axis=4).astype(np.float32)
-        d_rand = tf.constant(_Rand, name='boundary', dtype=tf.float32)
+                               axis=4)
+        d_rand = tf.constant(_Rand, name='boundary', dtype=tf.float64)
 
-        faraday_filter = tf.constant(self._faraday_filter, name='faraday_filter', dtype=tf.float32)
-        ampere_filter = tf.constant(self._ampere_filter, name='ampere_filter', dtype=tf.float32)
-        continuity_filter = tf.constant(self._continuity_filter, name='continuity_filter', dtype=tf.float32)
+        faraday_filter = tf.constant(self._faraday_filter, name='faraday_filter', dtype=tf.float64)
+        ampere_filter = tf.constant(self._ampere_filter, name='ampere_filter', dtype=tf.float64)
+        continuity_filter = tf.constant(self._continuity_filter, name='continuity_filter', dtype=tf.float64)
 
         axis_diskrete = np.linspace(0, 1, self._number_divisions_per_axis)
         mesh = np.stack(np.meshgrid(axis_diskrete, axis_diskrete, axis_diskrete))
@@ -222,19 +222,19 @@ class Maxwell3DFiniteDifference:
         self._B[:, :, :, 1] = np.vectorize(lambda x, y, z: initial_B(x, y, z)[1])(*mesh)
         self._B[:, :, :, 2] = np.vectorize(lambda x, y, z: initial_B(x, y, z)[2])(*mesh)
 
-        eps = tf.constant(self._eps.reshape((1, N, N, N, 1)).astype(np.float32), name='dielectricity', dtype=tf.float32)
-        mu = tf.constant(self._mu.reshape((1, N, N, N, 1)).astype(np.float32), name='permitivity', dtype=tf.float32)
-        g = tf.constant(self._g.reshape((1, N, N, N, 1)).astype(np.float32), name='conductivity', dtype=tf.float32)
-        B = tf.Variable(self._B.reshape((1, N, N, N, 3)).astype(np.float32), name='b_field', dtype=tf.float32)
+        eps = tf.constant(self._eps.reshape((1, N, N, N, 1)), name='dielectricity', dtype=tf.float64)
+        mu = tf.constant(self._mu.reshape((1, N, N, N, 1)), name='permitivity', dtype=tf.float64)
+        g = tf.constant(self._g.reshape((1, N, N, N, 1)), name='conductivity', dtype=tf.float64)
+        B = tf.Variable(self._B.reshape((1, N, N, N, 3)), name='b_field', dtype=tf.float64)
 
         if initial_charge is None:
             self._E[:, :, :, 0] = np.vectorize(lambda x, y, z: initial_E(x, y, z)[0])(*mesh)
             self._E[:, :, :, 1] = np.vectorize(lambda x, y, z: initial_E(x, y, z)[1])(*mesh)
             self._E[:, :, :, 2] = np.vectorize(lambda x, y, z: initial_E(x, y, z)[2])(*mesh)
-            E = tf.Variable(self._E.reshape((1, N, N, N, 3)).astype(np.float32), name='e_field', dtype=tf.float32)
+            E = tf.Variable(self._E.reshape((1, N, N, N, 3)), name='e_field', dtype=tf.float64)
         else:
             self._E = self.solve_poisson_problem(charge=np.vectorize(initial_charge)(*mesh) * self.mesh_size ** 3)
-            E = tf.Variable(self._E.reshape((1, N, N, N, 3)).astype(np.float32), name='e_field', dtype=tf.float32)
+            E = tf.Variable(self._E.reshape((1, N, N, N, 3)), name='e_field', dtype=tf.float64)
         if video:
             self.fig = plt.figure(figsize=(16, 16))
             self.ax = [self.fig.add_subplot(1, 3, k + 1, projection='3d') for k in range(3)]
