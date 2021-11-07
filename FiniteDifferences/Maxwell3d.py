@@ -203,6 +203,13 @@ class Maxwell3DFiniteDifference:
         if order < 0:
             raise ValueError("Order must be non negative!")
         N = self._number_divisions_per_axis
+
+        _Rand = np.ones((N, N,))
+        _Rand[:, -1] = 0.0
+        _Rand[-1, :] = 0.0
+        d_rand = np.multiply(np.multiply(_Rand.reshape((1, 1, N, N, 1)), _Rand.reshape((1, N, 1, N, 1))),
+                             _Rand.reshape((1, N, N, 1, 1)))
+
         faraday_filter = tf.constant(self._faraday_filter, name='faraday_filter', dtype=tf.float64)
         ampere_filter = tf.constant(self._ampere_filter, name='ampere_filter', dtype=tf.float64)
         continuity_filter = tf.constant(self._continuity_filter, name='continuity_filter', dtype=tf.float64)
@@ -240,7 +247,7 @@ class Maxwell3DFiniteDifference:
             dE = E
             for ord in range(1, order + 1):
                 j = g * dE
-                dB, dE = (convolution(dE, filters=faraday_filter, padding='SAME'),
+                dB, dE = (d_rand * convolution(dE, filters=faraday_filter, padding='SAME'),
                           convolution(dB / eps / mu, filters=ampere_filter, padding='SAME') - j / eps)
 
                 E.assign_add(dE * self.step_size ** ord / factorial(ord))
